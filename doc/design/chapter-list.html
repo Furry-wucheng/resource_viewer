@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>章节列表 — Resource Viewer</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <style>
+    .chapter-list-wrap { padding: var(--space-md); }
+
+    .resource-header {
+      display: flex; gap: var(--space-lg); padding: var(--space-lg);
+      background: var(--color-surface); border-radius: var(--radius-md);
+      margin-bottom: var(--space-lg); border: 1px solid var(--color-outline);
+    }
+    .res-thumb {
+      width: 80px; height: 110px;
+      background: linear-gradient(135deg, #1a237e, #4a148c);
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 24px; font-weight: bold;
+    }
+    .res-info { display: flex; flex-direction: column; justify-content: center; }
+    .res-name { font-size: var(--font-size-xl); font-weight: 600; }
+    .res-meta {
+      font-size: var(--font-size-sm); color: var(--color-on-surface-variant);
+      margin-top: var(--space-xs);
+    }
+
+    .section-title {
+      font-size: var(--font-size-sm); font-weight: 600;
+      color: var(--color-on-surface-variant);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: var(--space-md);
+    }
+
+    .chapter-item {
+      display: flex; align-items: center; gap: var(--space-md);
+      padding: var(--space-md);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-sm);
+      border: 1px solid var(--color-outline);
+      cursor: pointer;
+    }
+    .chapter-thumb {
+      width: 56px; height: 56px;
+      background: var(--color-surface-variant);
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-on-surface-variant);
+    }
+    .chapter-info { flex: 1; }
+    .chapter-name { font-size: var(--font-size-md); font-weight: 500; }
+    .chapter-pages {
+      font-size: var(--font-size-sm); color: var(--color-on-surface-variant);
+    }
+    .chapter-check { font-size: 22px; color: var(--color-on-surface-variant); }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div class="top-bar">
+      <button class="btn-back material-icons">arrow_back</button>
+      <span class="title">章节列表</span>
+    </div>
+
+    <div class="page-content no-nav">
+      <div class="chapter-list-wrap">
+        <!-- 资源信息头 -->
+        <div class="resource-header">
+          <div class="res-thumb">海</div>
+          <div class="res-info">
+            <div class="res-name">海贼王</div>
+            <div class="res-meta">共 12 章 · 1760 页 · 章节目</div>
+          </div>
+        </div>
+
+        <div class="section-title">章节</div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第001话 冒险的黎明</div>
+            <div class="chapter-pages">53 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第002话 戴草帽的路飞</div>
+            <div class="chapter-pages">47 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第003话 索隆登场</div>
+            <div class="chapter-pages">51 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第004话 摩根大佐</div>
+            <div class="chapter-pages">45 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第005话 巴奇海贼团</div>
+            <div class="chapter-pages">50 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+
+        <div class="chapter-item">
+          <div class="chapter-thumb">
+            <span class="material-icons">image</span>
+          </div>
+          <div class="chapter-info">
+            <div class="chapter-name">第006话 小丑巴奇</div>
+            <div class="chapter-pages">48 页</div>
+          </div>
+          <span class="chapter-check material-icons">chevron_right</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
