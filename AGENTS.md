@@ -97,11 +97,12 @@ media_kit 系列（P2 视频阶段）
 | 3 | 本地源链路 | LocalFileSource + 文件浏览器 + 直接阅读查看器 |
 | 4 | 标签系统 | Tag CRUD + 筛选栏 + 批量打标签 |
 | 5 | SMB 源 | SmbFileSource + SMB 配置 + 测试连接 |
-| 6 | 缩略图 | ThumbnailGenerator + LRU 缓存 + 首页网格 |
-| 7 | 组织模式 | 四种 OrganizationStrategy + 自动判定 |
-| 8 | PDF 查看 | PdfRenderService + PdfProvider |
-| 9 | 高级功能 | 拆分资源 + ResourcePicker + 章节模式 |
-| 10 | P2 扩展 | 视频播放器 + 画廊 + 压缩包阅读 |
+| 6 | 视频播放器 + 画廊模式 | media_kit 视频查看 + GalleryStrategy + 画廊浏览界面 |
+| 7 | 缩略图 | ThumbnailGenerator + LRU 缓存 + 首页网格 |
+| 8 | 组织模式 | 四种 OrganizationStrategy + 自动判定 |
+| 9 | PDF 查看 | PdfRenderService + PdfProvider |
+| 10 | 高级功能 | 拆分资源 + ResourcePicker + 章节模式 |
+| 11 | 压缩包阅读 | ArchiveProvider + 压缩包内图片浏览 |
 
 ## 文档导航
 
