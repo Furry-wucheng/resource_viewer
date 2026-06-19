@@ -24,3 +24,33 @@
 - `@prd/AGENTS.md` → PRD 文档索引
 - 技术文档记录选型理由、风险、架构约束，不重复 PRD 中的功能描述
 - 依赖版本变更时需同步更新本文档
+
+---
+
+## 实施计划
+
+各技术选型的工程落地对应 MVP 阶段如下。开发时以阶段文件的子阶段验收标准为准。
+
+| 技术内容 | MVP 阶段 | 关键文件 |
+|----------|---------|---------|
+| go_router + StatefulShellRoute | 阶段 01 §1.4~1.5 | `ui/core/router.dart`, `app_shell.dart` |
+| Theme + 设计令牌 | 阶段 01 §1.2 | `ui/core/theme/` |
+| Provider DI 注册 | 阶段 01 §1.3 | `app.dart` |
+| drift 建表 + PRAGMA | 阶段 02 §2.2~2.7 | `data/models/`, `database_service.dart` |
+| freezed 领域模型 | 阶段 02 §2.8 | `domain/models/` |
+| DomainError + Result\<T\> + UiState | 阶段 02 §2.9 | `domain/models/domain_error.dart`, `result.dart` |
+| FileSource 接口 + LocalFileSource | 阶段 03 §3.1~3.3 | `shared/file_source/` |
+| ContentProvider 接口 + ImageFolderProvider | 阶段 03 §3.4~3.5 | `shared/content_provider/` |
+| ThumbnailGenerator + LRU 缓存 | 阶段 03 §3.6~3.9 | `shared/thumbnail/`, `thumbnail_cache_service.dart` |
+| 图片查看器 + extended_image | 阶段 03 §3.18 | `ui/features/viewer/` |
+| 视频播放器 + media_kit | 阶段 03 §3.19 | `ui/features/viewer/video_player_page.dart` |
+| 标签交集查询 GROUP BY HAVING | 阶段 04 §4.1 | `tag_repository.dart` |
+| dart_smb2 + SmbFileSource | 阶段 05 §5.2~5.3 | `shared/file_source/smb_file_source.dart` |
+| flutter_secure_storage | 阶段 05 §5.1 | `secure_storage_service.dart` |
+| OrganizationStrategy 四种模式 | 阶段 06 §6.1~6.9 | `shared/organization/` |
+| pdfrx + PdfProvider | 阶段 06 §6.10 | `shared/content_provider/pdf_provider.dart` |
+| archive + ArchiveProvider | 阶段 07 §7.5 | `shared/content_provider/archive_provider.dart` |
+| 键集分页 + ImageCache 调优 | 阶段 07 §7.7~7.8 | `resource_repository.dart`, `app.dart` |
+| mocktail + drift 内存库测试 | 阶段 07 §7.9~7.13 | `test/` |
+
+> 详见 [`../mvp/AGENTS.md`](../mvp/AGENTS.md)
