@@ -179,7 +179,10 @@ class AppDatabase extends _$AppDatabase {
     final availableSourceIds =
         await (selectOnly(sources)
               ..addColumns([sources.id])
-              ..where(sources.enabled.equals(true)))
+              ..where(
+                sources.enabled.equals(true) &
+                    sources.isAvailable.equals(true),
+              ))
             .map((row) => row.read(sources.id)!)
             .get();
 
@@ -204,6 +207,27 @@ class AppDatabase extends _$AppDatabase {
       );
     }
     return query.get();
+  }
+
+  /// 监听可用资源变化（仅 enabled + isAvailable 的源下的资源）
+  Stream<List<Resource>> watchAvailableResources() {
+    // 使用 join 查询，监听 sources 和 resources 两个表的变化
+    final query = select(resources).join([
+      innerJoin(sources, sources.id.equalsExp(resources.sourceId)),
+    ])
+      ..where(
+        sources.enabled.equals(true) &
+            sources.isAvailable.equals(true) &
+            resources.isAvailable.equals(true),
+      )
+      ..orderBy([
+        OrderingTerm.desc(resources.createdAt),
+        OrderingTerm.asc(resources.id),
+      ]);
+
+    return query.watch().map(
+          (rows) => rows.map((row) => row.readTable(resources)).toList(),
+        );
   }
 
   /// 按标签筛选资源（交集筛选）

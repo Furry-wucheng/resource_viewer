@@ -47,6 +47,19 @@ class ResourceRepository {
     }
   }
 
+  /// 监听可用资源变化（仅 enabled + isAvailable 的源下的资源）
+  ///
+  /// 返回 Stream，当资源或源状态变化时自动更新。
+  Stream<Result<List<domain.Resource>>> watchAvailableResources() async* {
+    try {
+      await for (final rows in _db.watchAvailableResources()) {
+        yield Ok(rows.map(_toDomain).toList());
+      }
+    } catch (error) {
+      yield Err(DatabaseError('监听可用资源失败', cause: error));
+    }
+  }
+
   /// 创建资源
   Future<Result<domain.Resource>> createResource({
     required String id,

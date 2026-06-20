@@ -3,7 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import '../features/home/home_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/sources/file_browser_page.dart';
 import '../features/sources/source_list_page.dart';
+import '../features/viewer/resource_viewer_page.dart';
+import '../features/viewer/file_viewer_page.dart';
 import 'widgets/app_shell.dart';
 
 /// Root navigator key for full-screen routes that overlay the tab bar.
@@ -46,7 +49,12 @@ final router = GoRouter(
                   parentNavigatorKey: _sourcesNavigatorKey,
                   builder: (context, state) {
                     final id = state.pathParameters['id']!;
-                    return _PlaceholderPage(title: '文件浏览器 ($id)');
+                    // 源名称通过 extra 传递，如果没有则使用 ID
+                    final sourceName = state.extra as String? ?? id;
+                    return FileBrowserPage(
+                      sourceId: id,
+                      sourceName: sourceName,
+                    );
                   },
                 ),
               ],
@@ -71,7 +79,7 @@ final router = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
         final resourceId = state.pathParameters['resourceId']!;
-        return _PlaceholderPage(title: '查看器 ($resourceId)');
+        return ResourceViewerPage(resourceId: resourceId);
       },
     ),
     GoRoute(
@@ -79,7 +87,12 @@ final router = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
         final sourceId = state.pathParameters['sourceId']!;
-        return _PlaceholderPage(title: '文件查看器 ($sourceId)');
+        final request = state.extra! as FileViewerRequest;
+        return FileViewerPage(
+          sourceId: sourceId,
+          entry: request.entry,
+          sourceName: request.sourceName,
+        );
       },
     ),
     GoRoute(

@@ -46,4 +46,31 @@ void main() {
     ]);
     expect((count as Ok<int>).value, 1);
   });
+
+  test('不可达或禁用 Source 的资源不会进入首页查询与监听流', () async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final sources = SourceRepository(db);
+    final resources = ResourceRepository(db);
+
+    await sources.createSource(
+      id: 'source',
+      name: '本地',
+      type: SourceType.local,
+      rootPath: '/tmp',
+    );
+    await resources.createResource(
+      id: 'resource',
+      sourceId: 'source',
+      name: '资源',
+      type: domain.ResourceType.folder,
+      relativePath: 'resource',
+    );
+    await sources.markSourceUnavailable('source');
+
+    final page = await resources.getAvailableResources(pageSize: 20);
+    expect((page as Ok<List<domain.Resource>>).value, isEmpty);
+    final watched = await resources.watchAvailableResources().first;
+    expect((watched as Ok<List<domain.Resource>>).value, isEmpty);
+  });
 }
