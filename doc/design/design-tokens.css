@@ -82,6 +82,9 @@
   --color-on-surface: #E0E0E0;
   --color-on-surface-variant: #9E9E9E;
   --color-outline: #424242;
+  --color-primary: #BB86FC;
+  --color-primary-container: #4E2070;
+  --color-error: #CF6679;
 }
 
 *, *::before, *::after {

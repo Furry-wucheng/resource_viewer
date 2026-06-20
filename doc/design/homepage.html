@@ -135,6 +135,7 @@
     <!-- 顶部标题栏 -->
     <div class="top-bar">
       <span class="title">资源库</span>
+      <button class="btn btn-icon" onclick="toggleDemoState()" title="切换空状态演示" style="font-size:12px;opacity:0.6">演示:空状态</button>
     </div>
 
     <!-- 搜索栏 -->
@@ -214,6 +215,12 @@
 
     let selectedTags = new Set();
     let searchQuery = '';
+    let demoState = 'normal'; // 'normal' | 'empty' — 演示空状态切换
+
+    function toggleDemoState() {
+      demoState = demoState === 'normal' ? 'empty' : 'normal';
+      renderGrid();
+    }
 
     // ===== 搜索 =====
     function doSearch() {
@@ -243,9 +250,8 @@
     // ===== 渲染网格 =====
     function renderGrid() {
       let filtered;
-      let state = 'normal';
 
-      if (state === 'empty') {
+      if (demoState === 'empty') {
         document.getElementById('resourceGrid').innerHTML = '';
         document.getElementById('resourceGrid').classList.add('hidden');
         document.getElementById('emptyState').classList.remove('hidden');

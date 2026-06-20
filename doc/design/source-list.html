@@ -185,13 +185,13 @@
             <div class="form-group"><label>用户名</label><input type="text" value="admin"></div>
             <div class="form-group"><label>密码</label><input type="password" value="password"></div>
           </div>
-          <div class="test-result success" id="testResult">
-            <span class="material-icons" style="font-size:18px">check_circle</span> 连接成功
+          <div class="test-result hidden" id="testResult">
           </div>
         </div>
         <div class="dialog-actions">
+          <button class="btn" onclick="simTestConnection()">测试连接</button>
           <button class="btn" onclick="hideSmbDialog()">取消</button>
-          <button class="btn btn-primary" id="smbAddBtn" onclick="simAddSmbSource()">添加</button>
+          <button class="btn btn-primary" id="smbAddBtn" onclick="simAddSmbSource()" disabled style="opacity:0.5">添加</button>
         </div>
       </div>
     </div>
@@ -223,11 +223,17 @@
 
     function simTestConnection() {
       const result = document.getElementById('testResult');
+      const addBtn = document.getElementById('smbAddBtn');
       result.className = 'test-result checking';
+      result.classList.remove('hidden');
       result.innerHTML = '<span class="material-icons" style="font-size:18px">hourglass_top</span> 测试中...';
+      addBtn.disabled = true;
+      addBtn.style.opacity = '0.5';
       setTimeout(() => {
         result.className = 'test-result success';
         result.innerHTML = '<span class="material-icons" style="font-size:18px">check_circle</span> 连接成功';
+        addBtn.disabled = false;
+        addBtn.style.opacity = '1';
       }, 1200);
     }
 
