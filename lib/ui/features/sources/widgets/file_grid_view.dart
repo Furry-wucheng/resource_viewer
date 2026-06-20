@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'dart:typed_data';
 
 import '../../../../domain/models/file_entry.dart';
 import '../../../../domain/models/tag.dart';
@@ -18,6 +19,7 @@ class FileGridView extends StatelessWidget {
     this.importedPaths,
     this.resourceTags,
     this.onLongPressImported,
+    this.thumbnailLoader,
   });
 
   final List<FileEntry> entries;
@@ -33,6 +35,7 @@ class FileGridView extends StatelessWidget {
 
   /// 长按已入库项目的回调
   final ValueChanged<FileEntry>? onLongPressImported;
+  final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
   @override
   Widget build(BuildContext context) {
@@ -47,10 +50,7 @@ class FileGridView extends StatelessWidget {
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 16),
-            Text(
-              '此文件夹为空',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('此文件夹为空', style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
       );
@@ -80,11 +80,12 @@ class FileGridView extends StatelessWidget {
           onLongPress: isImported && onLongPressImported != null
               ? () => onLongPressImported?.call(entry)
               : onToggleSelect != null
-                  ? () => onToggleSelect?.call(entry)
-                  : null,
+              ? () => onToggleSelect?.call(entry)
+              : null,
           onToggleSelect: onToggleSelect != null
               ? () => onToggleSelect?.call(entry)
               : null,
+          thumbnailLoader: thumbnailLoader,
         );
       },
     );
@@ -100,6 +101,7 @@ class _FileGridItem extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.onToggleSelect,
+    this.thumbnailLoader,
   });
 
   final FileEntry entry;
@@ -109,6 +111,7 @@ class _FileGridItem extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onToggleSelect;
+  final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
   @override
   Widget build(BuildContext context) {
@@ -129,9 +132,7 @@ class _FileGridItem extends StatelessWidget {
                 Expanded(
                   child: Container(
                     color: theme.colorScheme.surfaceContainerHighest,
-                    child: Center(
-                      child: _buildIcon(theme),
-                    ),
+                    child: Center(child: _buildPreview(theme)),
                   ),
                 ),
                 // 文件名
@@ -159,7 +160,9 @@ class _FileGridItem extends StatelessWidget {
                                 vertical: 1,
                               ),
                               decoration: BoxDecoration(
-                                color: _parseColor(tag.color).withValues(alpha: 0.2),
+                                color: _parseColor(
+                                  tag.color,
+                                ).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -229,6 +232,28 @@ class _FileGridItem extends StatelessWidget {
   }
 
   /// 构建文件图标
+  Widget _buildPreview(ThemeData theme) {
+    final loader = thumbnailLoader;
+    if (loader == null) return _buildIcon(theme);
+    return FutureBuilder<Uint8List?>(
+      future: loader(entry),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) return _buildIcon(theme);
+        return Image.memory(
+          bytes,
+          key: ValueKey('file-thumbnail-${entry.path}'),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          gaplessPlayback: true,
+          cacheWidth: 300,
+          errorBuilder: (_, _, _) => _buildIcon(theme),
+        );
+      },
+    );
+  }
+
   Widget _buildIcon(ThemeData theme) {
     if (entry.isDirectory) {
       return const Icon(Icons.folder, color: Colors.amber, size: 48);

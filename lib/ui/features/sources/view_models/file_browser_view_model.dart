@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
@@ -35,6 +37,7 @@ class FileBrowserViewModel extends BaseViewModel {
   final ThumbnailRepository thumbnailRepository;
   final FileSourceFactory fileSourceFactory;
   final _uuid = const Uuid();
+  final Map<String, Future<Uint8List?>> _thumbnailFutures = {};
 
   /// 当前路径（相对于源根目录）
   String _currentPath = '';
@@ -47,6 +50,17 @@ class FileBrowserViewModel extends BaseViewModel {
   /// 当前目录下的文件列表
   List<FileEntry> _entries = [];
   List<FileEntry> get entries => _entries;
+
+  Future<Uint8List?> thumbnailFor(FileEntry entry) {
+    return _thumbnailFutures.putIfAbsent(entry.path, () async {
+      final fileSource = fileSourceFactory.get(sourceId);
+      if (fileSource == null) return null;
+      return switch (await thumbnailRepository.preview(fileSource, entry)) {
+        Ok(:final value) => value,
+        Err() => null,
+      };
+    });
+  }
 
   /// 视图模式
   ViewMode _viewMode = ViewMode.list;

@@ -88,8 +88,7 @@ class _FileBrowserView extends StatelessWidget {
                     : Icons.view_list,
               ),
               onPressed: vm.toggleViewMode,
-              tooltip:
-                  vm.viewMode == ViewMode.list ? '网格视图' : '列表视图',
+              tooltip: vm.viewMode == ViewMode.list ? '网格视图' : '列表视图',
             ),
           ],
         ],
@@ -97,8 +96,9 @@ class _FileBrowserView extends StatelessWidget {
       body: useDualPane
           ? _buildDualPane(context, vm)
           : _buildSinglePane(context, vm),
-      bottomNavigationBar:
-          vm.isMultiSelectMode ? _buildMultiSelectBar(context, vm) : null,
+      bottomNavigationBar: vm.isMultiSelectMode
+          ? _buildMultiSelectBar(context, vm)
+          : null,
     );
   }
 
@@ -151,9 +151,7 @@ class _FileBrowserView extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).dividerColor,
-          ),
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
         ),
       ),
       child: SingleChildScrollView(
@@ -174,8 +172,10 @@ class _FileBrowserView extends StatelessWidget {
                 onTap: () => vm.navigateToBreadcrumb(i),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
                   child: Text(
                     vm.breadcrumbs[i].label,
                     style: TextStyle(
@@ -211,10 +211,7 @@ class _FileBrowserView extends StatelessWidget {
               Text(vm.errorMessage ?? '加载失败'),
               if (vm.canRetry) ...[
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: vm.retry,
-                  child: const Text('重试'),
-                ),
+                ElevatedButton(onPressed: vm.retry, child: const Text('重试')),
               ],
             ],
           ),
@@ -225,8 +222,7 @@ class _FileBrowserView extends StatelessWidget {
             ? FileListView(
                 entries: vm.entries,
                 onTap: (entry) => _handleTap(context, vm, entry),
-                selectedEntries:
-                    vm.isMultiSelectMode ? vm.selectedPaths : null,
+                selectedEntries: vm.isMultiSelectMode ? vm.selectedPaths : null,
                 onToggleSelect: vm.isMultiSelectMode
                     ? (entry) => vm.toggleSelection(entry.path)
                     : null,
@@ -238,8 +234,7 @@ class _FileBrowserView extends StatelessWidget {
             : FileGridView(
                 entries: vm.entries,
                 onTap: (entry) => _handleTap(context, vm, entry),
-                selectedEntries:
-                    vm.isMultiSelectMode ? vm.selectedPaths : null,
+                selectedEntries: vm.isMultiSelectMode ? vm.selectedPaths : null,
                 onToggleSelect: vm.isMultiSelectMode
                     ? (entry) => vm.toggleSelection(entry.path)
                     : null,
@@ -247,6 +242,7 @@ class _FileBrowserView extends StatelessWidget {
                 resourceTags: vm.resourceTags,
                 onLongPressImported: (entry) =>
                     _showTagPicker(context, vm, entry),
+                thumbnailLoader: vm.thumbnailFor,
               );
     }
   }
@@ -325,10 +321,7 @@ class _FileBrowserView extends StatelessWidget {
       } else {
         await context.push(
           '/viewer/file/${vm.sourceId}',
-          extra: FileViewerRequest(
-            entry: entry,
-            sourceName: vm.sourceName,
-          ),
+          extra: FileViewerRequest(entry: entry, sourceName: vm.sourceName),
         );
       }
     } finally {
@@ -342,9 +335,7 @@ class _FileBrowserView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor),
-        ),
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: SafeArea(
         child: Row(
@@ -379,9 +370,9 @@ class _FileBrowserView extends StatelessWidget {
   ) async {
     final selected = vm.getSelectedEntries();
     if (selected.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少选择一项')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请至少选择一项')));
       return;
     }
 
@@ -410,8 +401,8 @@ class _FileBrowserView extends StatelessWidget {
       Ok(:final value) => '已添加 ${value.added} 项，跳过 ${value.skipped} 项',
       Err(:final error) => '添加失败：${error.message}',
     };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
