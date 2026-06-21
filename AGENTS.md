@@ -1,7 +1,7 @@
 # AGENTS.md — Resource Viewer
 
 > Flutter 桌面应用（Windows/macOS/Linux）：多数据源统一收藏管理工具（漫画、图包、PDF）
-> 当前状态：阶段 1-3 已完成（脚手架/数据层/本地源链路），含文件浏览器、缩略图预览、查看器
+> 当前状态：阶段 1-4 已完成（脚手架/数据层/本地源链路/标签系统），含文件浏览器、缩略图预览、查看器、标签筛选
 
 ## 命令
 
@@ -89,7 +89,7 @@ Result<T>: sealed class { Ok(value), Err(DomainError) }
 | 1 | 搭建骨架 | ✅ | `app.dart` + go_router + Provider 注册 + 空 Tab 页 |
 | 2 | 数据层 | ✅ | drift 表定义 + freezed 模型 + Repository |
 | 3 | 本地源链路 | ✅ | LocalFileSource + 文件浏览器 + 缩略图预览 + 查看器 + 视图模式持久化 |
-| 4 | 标签系统 | ⬜ | Tag CRUD + 筛选栏 + 批量打标签 |
+| 4 | 标签系统 | ✅ | Tag CRUD + 筛选栏 + 批量打标签 |
 | 5 | SMB 源 | ⬜ | SmbFileSource + SMB 配置 + 测试连接 |
 | 6 | 视频播放器 + 画廊模式 | ⬜ | media_kit 视频查看 + GalleryStrategy + 画廊浏览界面 |
 | 7 | 缩略图 | ⬜ | ThumbnailGenerator + LRU 缓存 + 首页网格 |
