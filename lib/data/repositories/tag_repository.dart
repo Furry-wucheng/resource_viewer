@@ -12,11 +12,17 @@ class TagRepository {
 
   final AppDatabase _db;
 
-  /// 获取所有标签
+  /// 获取所有标签（内置在前，自定义按创建时间倒序）
   Future<Result<List<domain.Tag>>> getAllTags() async {
     try {
       final rows = await _db.getAllTags();
       final tags = rows.map(_toDomain).toList();
+      // 排序：内置标签在前，自定义标签按创建时间倒序
+      tags.sort((a, b) {
+        if (a.isBuiltIn && !b.isBuiltIn) return -1;
+        if (!a.isBuiltIn && b.isBuiltIn) return 1;
+        return b.createdAt.compareTo(a.createdAt);
+      });
       return Ok(tags);
     } catch (e) {
       return Err(DatabaseError('获取标签列表失败', cause: e));
@@ -119,6 +125,78 @@ class TagRepository {
     }
   }
 
+  /// 重命名标签
+  Future<Result<domain.Tag>> renameTag(String id, String newName) async {
+    try {
+      // 获取现有标签
+      final existing = await _db.getTagById(id);
+      if (existing == null) {
+        return Err(DatabaseError('标签不存在'));
+      }
+
+      // 检查是否为内置标签
+      if (existing.isBuiltIn) {
+        return Err(ValidationError('内置标签不可重命名'));
+      }
+
+      // 校验新名称（排除自身）
+      final validation = await _validateTagName(newName, excludeId: id);
+      if (validation != null) {
+        return Err(ValidationError(validation));
+      }
+
+      final companion = TagsCompanion(
+        id: Value(id),
+        name: Value(newName),
+        color: Value(existing.color),
+        isBuiltIn: Value(existing.isBuiltIn),
+      );
+      await _db.updateTag(companion);
+      final updated = await _db.getTagById(id);
+      if (updated == null) {
+        return Err(DatabaseError('重命名标签后未找到记录'));
+      }
+      return Ok(_toDomain(updated));
+    } catch (e) {
+      return Err(DatabaseError('重命名标签失败', cause: e));
+    }
+  }
+
+  /// 修改标签颜色
+  Future<Result<domain.Tag>> updateColor(String id, String color) async {
+    try {
+      // 获取现有标签
+      final existing = await _db.getTagById(id);
+      if (existing == null) {
+        return Err(DatabaseError('标签不存在'));
+      }
+
+      if (existing.isBuiltIn) {
+        return Err(ValidationError('内置标签不可修改颜色'));
+      }
+
+      // 颜色格式校验
+      if (!RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(color)) {
+        return Err(ValidationError('颜色格式不正确，应为 #RRGGBB'));
+      }
+
+      final companion = TagsCompanion(
+        id: Value(id),
+        name: Value(existing.name),
+        color: Value(color),
+        isBuiltIn: Value(existing.isBuiltIn),
+      );
+      await _db.updateTag(companion);
+      final updated = await _db.getTagById(id);
+      if (updated == null) {
+        return Err(DatabaseError('修改颜色后未找到记录'));
+      }
+      return Ok(_toDomain(updated));
+    } catch (e) {
+      return Err(DatabaseError('修改标签颜色失败', cause: e));
+    }
+  }
+
   /// 删除标签（级联删除关联的 ResourceTags）
   Future<Result<void>> deleteTag(String id) async {
     try {
@@ -203,18 +281,44 @@ class TagRepository {
     }
   }
 
+  /// 按标签筛选资源（交集筛选）
+  ///
+  /// 使用 GROUP BY HAVING COUNT(*) = N 替代 INTERSECT
+  Future<Result<List<Resource>>> filterByTags(List<String> tagIds) async {
+    try {
+      return Ok(await _db.filterByTags(tagIds));
+    } catch (e) {
+      return Err(DatabaseError('筛选资源失败', cause: e));
+    }
+  }
+
+  /// 统计筛选结果数量
+  Future<Result<int>> countFiltered(List<String> tagIds) async {
+    try {
+      final count = await _db.countFiltered(tagIds);
+      return Ok(count);
+    } catch (e) {
+      return Err(DatabaseError('统计筛选结果失败', cause: e));
+    }
+  }
+
   // ============================================================================
   // 内部方法
   // ============================================================================
 
   /// 校验标签名（ViewModel 层操作前校验）
-  Future<String?> _validateTagName(String name) async {
+  ///
+  /// [excludeId] 排除的标签 ID（用于重命名时排除自身）
+  Future<String?> _validateTagName(String name, {String? excludeId}) async {
     if (name.trim().isEmpty) return '标签名不能为空';
     if (name == '收藏') return "'收藏'是系统内置标签，请换一个名称";
-    if (name.length > 20) return '标签名不能超过 20 个字符';
+    final trimmedName = name.trim();
+    if (trimmedName.length > 20) return '标签名不能超过 20 个字符';
 
-    final existing = await _db.getTagByName(name);
-    if (existing != null) return "标签'$name'已存在";
+    final existing = await _db.getTagByName(trimmedName);
+    if (existing != null && existing.id != excludeId) {
+      return "标签'$name'已存在";
+    }
 
     return null; // 通过
   }

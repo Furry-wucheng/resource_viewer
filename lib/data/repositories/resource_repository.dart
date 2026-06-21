@@ -99,6 +99,44 @@ class ResourceRepository {
     }
   }
 
+  /// 原子创建资源并绑定初始标签。
+  Future<Result<domain.Resource>> createResourceWithTags({
+    required String id,
+    required String sourceId,
+    required String name,
+    required domain.ResourceType type,
+    required String relativePath,
+    required List<String> tagIds,
+    domain.OrganizationMode? organizationMode,
+    int? fileCount,
+    BigInt? fileSize,
+  }) async {
+    try {
+      final companion = ResourcesCompanion(
+        id: Value(id),
+        sourceId: Value(sourceId),
+        name: Value(name),
+        type: Value(_toDriftResourceType(type)),
+        relativePath: Value(relativePath),
+        organizationMode: Value(
+          organizationMode != null
+              ? _toDriftOrganizationMode(organizationMode)
+              : null,
+        ),
+        fileCount: Value(fileCount),
+        fileSize: Value(fileSize),
+      );
+      await _db.createResourceWithTags(companion, tagIds);
+      final created = await _db.getResourceById(id);
+      if (created == null) {
+        return Err(DatabaseError('创建资源后未找到记录'));
+      }
+      return Ok(_toDomain(created));
+    } catch (e) {
+      return Err(DatabaseError('创建资源并设置标签失败', cause: e));
+    }
+  }
+
   /// 扫描去重 / Upsert（冲突时更新元数据）
   Future<Result<void>> upsertResource({
     required String id,

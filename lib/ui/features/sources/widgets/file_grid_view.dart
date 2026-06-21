@@ -120,6 +120,7 @@ class _FileGridItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: isImported ? onLongPress : null,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: Stack(
@@ -321,5 +322,4 @@ class _FileGridItem extends StatelessWidget {
 
     return Icon(iconData, color: color, size: 48);
   }
-
 }

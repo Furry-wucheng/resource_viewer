@@ -9,16 +9,22 @@ class VideoViewerPage extends StatelessWidget {
     super.key,
     required this.title,
     required this.filePath,
+    this.isFavorited = false,
+    this.onFavoriteTap,
   });
 
   final String title;
   final String filePath;
+  final bool isFavorited;
+  final VoidCallback? onFavoriteTap;
 
   @override
   Widget build(BuildContext context) {
     return ViewerPage.media(
       title: title,
       items: [ViewerMediaItem.video(title: title, videoPath: filePath)],
+      isFavorited: isFavorited,
+      onFavoriteTap: onFavoriteTap,
     );
   }
 }

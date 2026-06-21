@@ -5,6 +5,7 @@ import '../features/home/home_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/sources/file_browser_page.dart';
 import '../features/sources/source_list_page.dart';
+import '../features/tags/tag_manager_page.dart';
 import '../features/viewer/resource_viewer_page.dart';
 import '../features/viewer/file_viewer_page.dart';
 import 'widgets/app_shell.dart';
@@ -32,7 +33,10 @@ final router = GoRouter(
           routes: [
             GoRoute(
               path: '/home',
-              builder: (context, state) => const HomePage(),
+              builder: (context, state) => HomePage(
+                key: ValueKey(state.uri.toString()),
+                initialTagId: state.uri.queryParameters['filterTag'],
+              ),
             ),
           ],
         ),
@@ -99,24 +103,8 @@ final router = GoRouter(
       path: '/tags/manager',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
-        return const _PlaceholderPage(title: '标签管理');
+        return const TagManagerPage();
       },
     ),
   ],
 );
-
-// Placeholder pages for routes that don't have real pages yet.
-
-class _PlaceholderPage extends StatelessWidget {
-  const _PlaceholderPage({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(child: Text(title)),
-    );
-  }
-}

@@ -10,6 +10,7 @@ import '../../../domain/core/result.dart';
 import '../../../domain/models/file_entry.dart';
 import '../../../shared/file_source/file_source_factory.dart';
 import '../../core/view_models/base_view_model.dart';
+import '../tags/widgets/tag_multi_select_sheet.dart';
 import '../viewer/file_viewer_page.dart';
 import 'view_models/file_browser_view_model.dart';
 import 'widgets/directory_tree.dart';
@@ -251,6 +252,8 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
+                onLongPressImported: (entry) =>
+                    _editResourceTags(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
               )
             : FileGridView(
@@ -262,6 +265,8 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
+                onLongPressImported: (entry) =>
+                    _editResourceTags(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
               );
     }
@@ -353,7 +358,9 @@ class _FileBrowserView extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: null,
+                onPressed: vm.selectedPaths.isEmpty
+                    ? null
+                    : () => _batchTagResources(context, vm),
                 icon: const Icon(Icons.label),
                 label: const Text('批量打标签'),
               ),
@@ -377,27 +384,45 @@ class _FileBrowserView extends StatelessWidget {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final choice = await showDialog<_BatchAddChoice>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('添加资源'),
         content: Text('将检查并添加 ${selected.length} 个所选项目，空文件夹和已入库项目会被跳过。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, _BatchAddChoice.skipTags),
+            child: const Text('跳过标签'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('添加'),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _BatchAddChoice.selectTags),
+            child: const Text('下一步：打标签'),
           ),
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (choice == null || !context.mounted) return;
 
-    final result = await vm.addSelectedResources();
+    var tagIds = <String>[];
+    if (choice == _BatchAddChoice.selectTags) {
+      final selectedTagIds = await TagMultiSelectSheet.show(
+        context: context,
+        selectedTagIds: {},
+        title: '为新资源选择标签',
+      );
+      if (selectedTagIds == null || !context.mounted) return;
+      tagIds = selectedTagIds.toList();
+    }
+
+    final result = await vm.addSelectedResources(tagIds: tagIds);
     if (!context.mounted) return;
+
     final message = switch (result) {
       Ok(:final value) => '已添加 ${value.added} 项，跳过 ${value.skipped} 项',
       Err(:final error) => '添加失败：${error.message}',
@@ -406,4 +431,101 @@ class _FileBrowserView extends StatelessWidget {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+
+  /// 批量打标签
+  Future<void> _batchTagResources(
+    BuildContext context,
+    FileBrowserViewModel vm,
+  ) async {
+    final selected = vm.getSelectedEntries();
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请至少选择一项')));
+      return;
+    }
+
+    // 计算已入库和未入库的数量
+    final importedCount = selected.where((e) => vm.isImported(e.path)).length;
+    final skippedCount = selected.length - importedCount;
+
+    if (importedCount == 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('所选项目均未入库，请先添加资源')));
+      return;
+    }
+
+    // 显示确认弹窗
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('批量打标签'),
+        content: Text(
+          skippedCount > 0
+              ? '将为 $importedCount 个资源打标签（已跳过 $skippedCount 个未入库项）'
+              : '将为 $importedCount 个资源打标签',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    // 显示标签选择面板
+    final selectedTagIds = await TagMultiSelectSheet.show(
+      context: context,
+      selectedTagIds: {},
+    );
+    if (selectedTagIds == null || selectedTagIds.isEmpty || !context.mounted) {
+      return;
+    }
+
+    // 执行批量打标签
+    final result = await vm.batchTagSelectedResources(selectedTagIds.toList());
+    if (!context.mounted) return;
+
+    final message = switch (result) {
+      Ok(:final value) => '已为 ${value.tagged} 个资源打标签，跳过 ${value.skipped} 项',
+      Err(:final error) => '操作失败：${error.message}',
+    };
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+
+    // 成功后退出多选模式
+    if (result is Ok) {
+      vm.exitMultiSelectMode();
+    }
+  }
+
+  /// 编辑单个资源的标签
+  Future<void> _editResourceTags(
+    BuildContext context,
+    FileBrowserViewModel vm,
+    FileEntry entry,
+  ) async {
+    final currentTags = vm.getTagsForPath(entry.path);
+    final currentTagIds = currentTags.map((t) => t.id).toSet();
+
+    final selectedTagIds = await TagMultiSelectSheet.show(
+      context: context,
+      selectedTagIds: currentTagIds,
+      title: '编辑标签 - ${entry.name}',
+    );
+
+    if (selectedTagIds == null || !context.mounted) return;
+
+    await vm.updateResourceTags(entry.path, selectedTagIds);
+  }
 }
+
+enum _BatchAddChoice { skipTags, selectTags }

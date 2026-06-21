@@ -3,13 +3,18 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/resource_repository.dart';
+import '../../../data/repositories/tag_repository.dart';
 import '../../../data/repositories/thumbnail_repository.dart';
+import '../../../domain/use_cases/filter_resources_by_tags_use_case.dart';
 import '../../core/view_models/base_view_model.dart';
 import 'view_models/home_view_model.dart';
+import 'widgets/filter_bar.dart';
 import 'widgets/resource_grid.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.initialTagId});
+
+  final String? initialTagId;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -24,6 +29,11 @@ class _HomePageState extends State<HomePage> {
     _viewModel = HomeViewModel(
       resourceRepository: context.read<ResourceRepository>(),
       thumbnailRepository: context.read<ThumbnailRepository>(),
+      tagRepository: context.read<TagRepository>(),
+      filterResourcesByTags: FilterResourcesByTagsUseCase(
+        context.read<ResourceRepository>(),
+      ),
+      initialTagId: widget.initialTagId,
     );
     _viewModel.addListener(_onStateChanged);
     _viewModel.loadResources();
@@ -71,10 +81,33 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       case UiState.success:
-        return ResourceGrid(
-          resources: _viewModel.resources,
-          thumbnailPaths: _viewModel.thumbnailPaths,
-          onAddSource: () => context.go('/sources'),
+        return Column(
+          children: [
+            // 筛选栏
+            FilterBar(
+              customTags: _viewModel.customTags,
+              selectedTagIds: _viewModel.selectedTagIds,
+              isAllSelected: _viewModel.isAllSelected,
+              isFavoriteSelected: _viewModel.isFavoriteSelected,
+              filteredCount: _viewModel.filteredCount,
+              totalCount: _viewModel.totalCount,
+              hasActiveFilter: _viewModel.hasActiveFilter,
+              onSearchChanged: _viewModel.setSearchQuery,
+              onAllTap: _viewModel.selectAll,
+              onFavoriteTap: _viewModel.selectFavorite,
+              onTagTap: _viewModel.toggleTag,
+            ),
+            // 资源网格
+            Expanded(
+              child: ResourceGrid(
+                resources: _viewModel.resources,
+                thumbnailPaths: _viewModel.thumbnailPaths,
+                favoriteResourceIds: _viewModel.favoriteResourceIds,
+                onAddSource: () => context.go('/sources'),
+                onFavoriteTap: _viewModel.toggleFavorite,
+              ),
+            ),
+          ],
         );
     }
   }

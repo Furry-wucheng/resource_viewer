@@ -4,10 +4,13 @@ import 'package:path/path.dart' as p;
 
 import '../../../data/repositories/resource_repository.dart';
 import '../../../data/repositories/source_repository.dart';
+import '../../../data/repositories/tag_repository.dart';
 import '../../../domain/core/result.dart';
 import '../../../domain/models/resource.dart' as domain;
 import '../../../shared/content_provider/image_folder_provider.dart';
 import '../../../shared/file_source/file_source_factory.dart';
+import '../../features/home/view_models/home_view_model.dart'
+    show favoriteTagId;
 import 'viewer_page.dart';
 import 'video_viewer_page.dart';
 
@@ -27,6 +30,7 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
   bool _loading = true;
   String? _error;
   Widget? _viewer;
+  bool _isFavorited = false;
 
   @override
   void initState() {
@@ -38,10 +42,12 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
     final resourceRepo = context.read<ResourceRepository>();
     final sourceRepo = context.read<SourceRepository>();
     final fileSourceFactory = context.read<FileSourceFactory>();
+    final tagRepo = context.read<TagRepository>();
 
     // 查找资源
-    final resourceResult =
-        await resourceRepo.getResourceById(widget.resourceId);
+    final resourceResult = await resourceRepo.getResourceById(
+      widget.resourceId,
+    );
     final resource = switch (resourceResult) {
       Ok(:final value) => value,
       Err(:final error) => _fail(error.message),
@@ -55,6 +61,13 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
       Err(:final error) => _fail(error.message),
     };
     if (source == null) return;
+
+    // 加载收藏状态
+    final tagsResult = await tagRepo.getTagsForResource(widget.resourceId);
+    _isFavorited = switch (tagsResult) {
+      Ok(:final value) => value.any((t) => t.id == favoriteTagId),
+      Err() => false,
+    };
 
     // 创建 FileSource
     final fileSource = fileSourceFactory.create(source);
@@ -79,6 +92,9 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
         ViewerPage(
           title: resource.name,
           contentProvider: provider,
+          resourceId: widget.resourceId,
+          isFavorited: _isFavorited,
+          onFavoriteTap: _toggleFavorite,
         ),
       );
     } else if (resource.type == domain.ResourceType.video) {
@@ -87,6 +103,8 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
         VideoViewerPage(
           title: resource.name,
           filePath: p.join(source.rootPath, resource.relativePath),
+          isFavorited: _isFavorited,
+          onFavoriteTap: _toggleFavorite,
         ),
       );
     } else {
@@ -94,8 +112,35 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
     }
   }
 
+  Future<void> _toggleFavorite() async {
+    final tagRepo = context.read<TagRepository>();
+
+    if (_isFavorited) {
+      final result = await tagRepo.removeTagFromResource(
+        widget.resourceId,
+        favoriteTagId,
+      );
+      if (result is Ok) {
+        setState(() => _isFavorited = false);
+      }
+    } else {
+      final result = await tagRepo.addTagToResource(
+        widget.resourceId,
+        favoriteTagId,
+      );
+      if (result is Ok) {
+        setState(() => _isFavorited = true);
+      }
+    }
+  }
+
   dynamic _fail(String message) {
-    if (mounted) setState(() { _error = message; _loading = false; });
+    if (mounted) {
+      setState(() {
+        _error = message;
+        _loading = false;
+      });
+    }
     return null;
   }
 
@@ -113,9 +158,7 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
     final viewer = _viewer;
     if (viewer != null) return viewer;
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
       appBar: AppBar(title: const Text('资源查看')),

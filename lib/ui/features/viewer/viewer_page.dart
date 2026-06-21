@@ -18,6 +18,9 @@ class ViewerPage extends StatefulWidget {
     required this.title,
     required this.contentProvider,
     this.initialPage = 0,
+    this.resourceId,
+    this.isFavorited = false,
+    this.onFavoriteTap,
   }) : items = null,
        onDispose = null;
 
@@ -27,6 +30,9 @@ class ViewerPage extends StatefulWidget {
     required this.items,
     this.initialPage = 0,
     this.onDispose,
+    this.resourceId,
+    this.isFavorited = false,
+    this.onFavoriteTap,
   }) : contentProvider = null;
 
   final String title;
@@ -34,6 +40,15 @@ class ViewerPage extends StatefulWidget {
   final ContentProvider? contentProvider;
   final List<ViewerMediaItem>? items;
   final Future<void> Function()? onDispose;
+
+  /// 资源 ID（用于收藏功能）
+  final String? resourceId;
+
+  /// 是否已收藏
+  final bool isFavorited;
+
+  /// 收藏按钮点击回调
+  final VoidCallback? onFavoriteTap;
 
   @override
   State<ViewerPage> createState() => _ViewerPageState();
@@ -145,6 +160,8 @@ class _ViewerPageState extends State<ViewerPage> {
               currentPage: vm.currentPage + 1,
               totalPages: vm.totalPages,
               onBack: () => Navigator.of(context).pop(),
+              isFavorited: widget.isFavorited,
+              onFavoriteTap: widget.onFavoriteTap,
             ),
           ),
         if (vm.isToolbarVisible && !isVideo && vm.totalPages > 1)

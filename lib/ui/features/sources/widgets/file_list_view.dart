@@ -50,10 +50,7 @@ class FileListView extends StatelessWidget {
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 16),
-            Text(
-              '此文件夹为空',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('此文件夹为空', style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
       );
@@ -68,26 +65,31 @@ class FileListView extends StatelessWidget {
         final isImported = importedPaths?.contains(entry.path) ?? false;
         final tags = isImported ? (resourceTags?[entry.path] ?? []) : <Tag>[];
 
-        return ListTile(
-          leading: _buildIcon(entry, isImported),
-          title: Text(
-            entry.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: _buildSubtitle(context, entry, tags),
-          trailing: onToggleSelect != null
-              ? Checkbox(
-                  value: isSelected,
-                  onChanged: (_) => onToggleSelect?.call(entry),
-                )
-              : null,
-          onTap: onTap != null ? () => onTap?.call(entry) : null,
-          onLongPress: isImported && onLongPressImported != null
+        return GestureDetector(
+          onSecondaryTap: isImported && onLongPressImported != null
               ? () => onLongPressImported?.call(entry)
-              : onToggleSelect != null
-                  ? () => onToggleSelect?.call(entry)
-                  : null,
+              : null,
+          child: ListTile(
+            leading: _buildIcon(entry, isImported),
+            title: Text(
+              entry.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: _buildSubtitle(context, entry, tags),
+            trailing: onToggleSelect != null
+                ? Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => onToggleSelect?.call(entry),
+                  )
+                : null,
+            onTap: onTap != null ? () => onTap?.call(entry) : null,
+            onLongPress: isImported && onLongPressImported != null
+                ? () => onLongPressImported?.call(entry)
+                : onToggleSelect != null
+                ? () => onToggleSelect?.call(entry)
+                : null,
+          ),
         );
       },
     );
@@ -179,7 +181,12 @@ class FileListView extends StatelessWidget {
     return switch (p.extension(entry.name).toLowerCase()) {
       '.jpg' || '.jpeg' || '.png' || '.gif' || '.webp' || '.bmp' => Icons.image,
       '.pdf' => Icons.picture_as_pdf,
-      '.mp4' || '.mkv' || '.avi' || '.mov' || '.wmv' || '.webm' => Icons.video_file,
+      '.mp4' ||
+      '.mkv' ||
+      '.avi' ||
+      '.mov' ||
+      '.wmv' ||
+      '.webm' => Icons.video_file,
       '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Icons.archive,
       _ => Icons.insert_drive_file,
     };
@@ -187,7 +194,12 @@ class FileListView extends StatelessWidget {
 
   Color _getFileIconColor(FileEntry entry) {
     return switch (p.extension(entry.name).toLowerCase()) {
-      '.jpg' || '.jpeg' || '.png' || '.gif' || '.webp' || '.bmp' => Colors.green,
+      '.jpg' ||
+      '.jpeg' ||
+      '.png' ||
+      '.gif' ||
+      '.webp' ||
+      '.bmp' => Colors.green,
       '.pdf' => Colors.red,
       '.mp4' || '.mkv' || '.avi' || '.mov' || '.wmv' || '.webm' => Colors.blue,
       '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Colors.orange,
@@ -196,7 +208,11 @@ class FileListView extends StatelessWidget {
   }
 
   /// 构建副标题（文件大小 + 标签芯片）
-  Widget? _buildSubtitle(BuildContext context, FileEntry entry, List<Tag> tags) {
+  Widget? _buildSubtitle(
+    BuildContext context,
+    FileEntry entry,
+    List<Tag> tags,
+  ) {
     final sizeText = _buildSizeText(entry);
 
     if (tags.isEmpty && sizeText == null) return null;
@@ -212,10 +228,7 @@ class FileListView extends StatelessWidget {
             runSpacing: 2,
             children: tags.map((tag) {
               return Chip(
-                label: Text(
-                  tag.name,
-                  style: const TextStyle(fontSize: 10),
-                ),
+                label: Text(tag.name, style: const TextStyle(fontSize: 10)),
                 backgroundColor: _parseColor(tag.color).withValues(alpha: 0.2),
                 labelStyle: TextStyle(color: _parseColor(tag.color)),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

@@ -295,7 +295,9 @@ class FileBrowserViewModel extends BaseViewModel {
   }
 
   /// 将当前选中的兼容项目批量加入资源库。
-  Future<Result<BatchAddResult>> addSelectedResources() async {
+  Future<Result<BatchAddResult>> addSelectedResources({
+    List<String> tagIds = const [],
+  }) async {
     final fileSource = fileSourceFactory.get(sourceId);
     if (fileSource == null) {
       return const Err(SourceUnreachableError('数据源连接尚未初始化'));
@@ -303,6 +305,7 @@ class FileBrowserViewModel extends BaseViewModel {
 
     var added = 0;
     var skipped = 0;
+    final addedResourceIds = <String>[];
     for (final entry in getSelectedEntries()) {
       if (isImported(entry.path)) {
         skipped++;
@@ -316,7 +319,7 @@ class FileBrowserViewModel extends BaseViewModel {
       }
 
       final id = _uuid.v4();
-      final createResult = await resourceRepository.createResource(
+      final createResult = await resourceRepository.createResourceWithTags(
         id: id,
         sourceId: sourceId,
         name: entry.name,
@@ -324,6 +327,7 @@ class FileBrowserViewModel extends BaseViewModel {
         relativePath: entry.path,
         organizationMode: OrganizationMode.direct,
         fileSize: entry.size,
+        tagIds: tagIds,
       );
       switch (createResult) {
         case Err(:final error):
@@ -338,12 +342,19 @@ class FileBrowserViewModel extends BaseViewModel {
           if (thumbResult case Err(:final error)) return Err(error);
           _importedPaths.add(entry.path);
           _pathToResourceId[entry.path] = id;
+          addedResourceIds.add(id);
           added++;
       }
     }
 
     exitMultiSelectMode();
-    return Ok(BatchAddResult(added: added, skipped: skipped));
+    return Ok(
+      BatchAddResult(
+        added: added,
+        skipped: skipped,
+        addedResourceIds: addedResourceIds,
+      ),
+    );
   }
 
   Future<ResourceType?> _resourceTypeFor(FileEntry entry) async {
@@ -423,6 +434,55 @@ class FileBrowserViewModel extends BaseViewModel {
     return false;
   }
 
+  /// 为指定的资源批量打标签。
+  Future<Result<void>> applyTagsToResources(
+    List<String> resourceIds,
+    List<String> tagIds,
+  ) async {
+    for (final resourceId in resourceIds) {
+      final result = await tagRepository.setTagsForResource(resourceId, tagIds);
+      if (result is Err) {
+        return result;
+      }
+    }
+
+    // 重新加载标签数据
+    await _loadImportedPaths();
+    return const Ok(null);
+  }
+
+  /// 批量为选中的已入库资源打标签。
+  ///
+  /// 返回 [BatchTagResult]，包含已打标签数和跳过的未入库数。
+  /// [tagIds] 为要设置的标签 ID 列表。
+  Future<Result<BatchTagResult>> batchTagSelectedResources(
+    List<String> tagIds,
+  ) async {
+    var tagged = 0;
+    var skipped = 0;
+
+    for (final entry in getSelectedEntries()) {
+      final resourceId = _pathToResourceId[entry.path];
+      if (resourceId == null) {
+        skipped++;
+        continue;
+      }
+
+      final result = await tagRepository.setTagsForResource(resourceId, tagIds);
+      switch (result) {
+        case Ok():
+          tagged++;
+        case Err(:final error):
+          return Err(error);
+      }
+    }
+
+    // 重新加载标签数据
+    await _loadImportedPaths();
+
+    return Ok(BatchTagResult(tagged: tagged, skipped: skipped));
+  }
+
   @override
   Future<void> retry() async {
     await loadDirectory(_currentPath);
@@ -430,9 +490,21 @@ class FileBrowserViewModel extends BaseViewModel {
 }
 
 class BatchAddResult {
-  const BatchAddResult({required this.added, required this.skipped});
+  const BatchAddResult({
+    required this.added,
+    required this.skipped,
+    required this.addedResourceIds,
+  });
 
   final int added;
+  final int skipped;
+  final List<String> addedResourceIds;
+}
+
+class BatchTagResult {
+  const BatchTagResult({required this.tagged, required this.skipped});
+
+  final int tagged;
   final int skipped;
 }
 

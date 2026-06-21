@@ -14,12 +14,21 @@ class ResourceGrid extends StatefulWidget {
     super.key,
     required this.resources,
     this.thumbnailPaths = const {},
+    this.favoriteResourceIds = const {},
     this.onAddSource,
+    this.onFavoriteTap,
   });
 
   final List<Resource> resources;
   final Map<String, String?> thumbnailPaths;
+
+  /// 已收藏的资源 ID 集合
+  final Set<String> favoriteResourceIds;
+
   final VoidCallback? onAddSource;
+
+  /// 收藏按钮点击回调
+  final void Function(String resourceId)? onFavoriteTap;
 
   @override
   State<ResourceGrid> createState() => _ResourceGridState();
@@ -35,7 +44,11 @@ class _ResourceGridState extends State<ResourceGrid> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.photo_library_outlined, size: 64, color: Colors.grey),
+            const Icon(
+              Icons.photo_library_outlined,
+              size: 64,
+              color: Colors.grey,
+            ),
             const SizedBox(height: 16),
             const Text('还没有资源'),
             const SizedBox(height: 12),
@@ -67,6 +80,10 @@ class _ResourceGridState extends State<ResourceGrid> {
               resource: resource,
               thumbnailPath: widget.thumbnailPaths[resource.id],
               onTap: () => _openResource(context, resource),
+              isFavorited: widget.favoriteResourceIds.contains(resource.id),
+              onFavoriteTap: widget.onFavoriteTap != null
+                  ? () => widget.onFavoriteTap!(resource.id)
+                  : null,
             );
           },
         );
