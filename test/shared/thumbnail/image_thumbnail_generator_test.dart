@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:resource_viewer/shared/file_source/local_file_source.dart';
 import 'package:resource_viewer/shared/thumbnail/image_thumbnail_generator.dart';
+import 'package:resource_viewer/shared/thumbnail/thumbnail_generator.dart';
 
 void main() {
   late Directory tempDir;
@@ -28,13 +29,28 @@ void main() {
   });
 
   /// 创建一个测试 JPEG 图片
-  Future<void> createTestImage(String name, {int width = 400, int height = 300}) async {
+  Future<void> createTestImage(
+    String name, {
+    int width = 400,
+    int height = 300,
+  }) async {
     final image = img.Image(width: width, height: height);
     // 填充红色
     img.fill(image, color: img.ColorRgb8(255, 0, 0));
     final bytes = img.encodeJpg(image);
     final file = File(p.join(tempDir.path, name));
     await file.writeAsBytes(bytes);
+  }
+
+  Future<void> createAnimatedGif(String name) async {
+    final animation = img.Image(width: 120, height: 180);
+    img.fill(animation, color: img.ColorRgb8(255, 0, 0));
+    final secondFrame = img.Image(width: 120, height: 180);
+    img.fill(secondFrame, color: img.ColorRgb8(0, 0, 255));
+    animation.addFrame(secondFrame);
+    await File(
+      p.join(tempDir.path, name),
+    ).writeAsBytes(img.encodeGif(animation));
   }
 
   group('ImageThumbnailGenerator', () {
@@ -67,12 +83,29 @@ void main() {
       expect(thumbImage, isNotNull);
 
       // 验证尺寸
-      expect(thumbImage!.width, ImageThumbnailGenerator.thumbWidth);
-      expect(thumbImage.height, ImageThumbnailGenerator.thumbHeight);
+      expect(thumbImage!.width, ThumbnailGenerator.thumbWidth);
+      expect(thumbImage.height, ThumbnailGenerator.thumbHeight);
 
       // 验证比例约 2:3
       final ratio = thumbImage.width / thumbImage.height;
       expect(ratio, closeTo(2 / 3, 0.01));
+    });
+
+    test('动态 GIF 只使用第一帧生成静态 JPEG', () async {
+      await createAnimatedGif('animated.gif');
+
+      final result = await generator.generate(fileSource, '', 'gif-resource');
+
+      expect(result, isNotNull);
+      final thumbnail = img.decodeJpg(await File(result!).readAsBytes());
+      expect(thumbnail, isNotNull);
+      expect(thumbnail!.numFrames, 1);
+      final center = thumbnail.getPixel(
+        thumbnail.width ~/ 2,
+        thumbnail.height ~/ 2,
+      );
+      expect(center.r, greaterThan(200));
+      expect(center.b, lessThan(50));
     });
 
     test('空目录返回 null', () async {

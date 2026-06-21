@@ -1,52 +1,77 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
 import 'package:image/image.dart' as img;
-import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../file_source/file_source.dart';
+import '../file_source/local_file_source.dart';
 import 'thumbnail_generator.dart';
 
 class VideoThumbnailGenerator implements ThumbnailGenerator {
-  static const thumbWidth = 180;
-  static const thumbHeight = 270;
-
-  VideoThumbnailGenerator({this.outputDirectory});
+  VideoThumbnailGenerator({
+    this.outputDirectory,
+    FcNativeVideoThumbnail? thumbnailer,
+  }) : _thumbnailer = thumbnailer ?? FcNativeVideoThumbnail();
 
   final String? outputDirectory;
+  final FcNativeVideoThumbnail _thumbnailer;
+
+  /// 原生视频解码串行执行，避免文件网格同时创建过多解码任务。
+  static Future<void> _captureQueue = Future.value();
+
+  Future<T> _serialize<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _captureQueue = _captureQueue.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
 
   /// 截取并缩放视频首帧，供文件浏览器直接显示。
-  Future<Uint8List?> generatePreview(
+  Future<Uint8List?> generatePreview(FileSource source, String relativePath) =>
+      _serialize(() => _generatePreview(source, relativePath));
+
+  Future<Uint8List?> _generatePreview(
     FileSource source,
     String relativePath,
   ) async {
-    Player? player;
     try {
       final absolutePath = _resolveAbsolutePath(source, relativePath);
       if (absolutePath == null || !await File(absolutePath).exists()) {
         return null;
       }
-      player = Player();
-      // 先短暂播放以确保 Windows/Linux/macOS 后端已解码出视频帧，
-      // 再回到起点截图；仅 open(play: false) 在部分后端会一直返回空帧。
-      await player.open(Media(absolutePath), play: true);
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      await player.pause();
-      await player.seek(Duration.zero);
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      final screenshot = await player.screenshot();
-      if (screenshot == null || screenshot.isEmpty) return null;
-      final decoded = img.decodeImage(screenshot);
-      if (decoded == null) return null;
-      final thumbnail = _resizeAndCrop(decoded, thumbWidth, thumbHeight);
-      return Uint8List.fromList(img.encodeJpg(thumbnail, quality: 82));
+      // media_kit Player 默认 vo=null，没有已挂载的 Video surface 时
+      // screenshot() 无法获取帧。文件缩略图改用各平台原生 API。
+      final bytes = await _thumbnailer.saveThumbnailToBytes(
+        srcFile: absolutePath,
+        width: ThumbnailGenerator.thumbHeight,
+        height: ThumbnailGenerator.thumbHeight,
+        quality: ThumbnailGenerator.jpegQuality,
+      );
+      if (bytes == null || bytes.isEmpty) return null;
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null || decoded.width <= 1 || decoded.height <= 1) {
+        return null;
+      }
+      final thumbnail = _resizeAndCrop(
+        decoded,
+        ThumbnailGenerator.thumbWidth,
+        ThumbnailGenerator.thumbHeight,
+      );
+      return Uint8List.fromList(
+        img.encodeJpg(thumbnail, quality: ThumbnailGenerator.jpegQuality),
+      );
     } catch (_) {
       return null;
-    } finally {
-      await player?.dispose();
     }
   }
 
@@ -72,12 +97,8 @@ class VideoThumbnailGenerator implements ThumbnailGenerator {
   }
 
   String? _resolveAbsolutePath(FileSource source, String relativePath) {
-    try {
-      final rootPath = (source as dynamic).rootPath as String?;
-      return rootPath == null ? null : p.join(rootPath, relativePath);
-    } catch (_) {
-      return null;
-    }
+    if (source is! LocalFileSource || relativePath.isEmpty) return null;
+    return p.normalize(p.join(source.rootPath, relativePath));
   }
 
   img.Image _resizeAndCrop(img.Image source, int width, int height) {

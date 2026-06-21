@@ -1,9 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
+import 'package:image/image.dart' as img;
+import 'package:mocktail/mocktail.dart';
 
 import 'package:resource_viewer/shared/file_source/local_file_source.dart';
 import 'package:resource_viewer/shared/thumbnail/video_thumbnail_generator.dart';
+
+class _MockVideoThumbnailer extends Mock implements FcNativeVideoThumbnail {}
 
 void main() {
   late Directory tempDir;
@@ -26,6 +31,41 @@ void main() {
   });
 
   group('VideoThumbnailGenerator', () {
+    test('原生解码结果被裁剪为 180x270 JPEG', () async {
+      final video = File('${tempDir.path}${Platform.pathSeparator}clip.mp4');
+      await video.writeAsBytes(const [0]);
+      final thumbnailer = _MockVideoThumbnailer();
+      final frame = img.Image(width: 320, height: 180);
+      img.fill(frame, color: img.ColorRgb8(20, 180, 80));
+      when(
+        () => thumbnailer.saveThumbnailToBytes(
+          srcFile: video.path,
+          width: 270,
+          height: 270,
+          quality: 85,
+        ),
+      ).thenAnswer((_) async => img.encodeJpg(frame));
+      generator = VideoThumbnailGenerator(
+        outputDirectory: tempDir.path,
+        thumbnailer: thumbnailer,
+      );
+
+      final bytes = await generator.generatePreview(fileSource, 'clip.mp4');
+
+      expect(bytes, isNotNull);
+      final decoded = img.decodeJpg(bytes!);
+      expect(decoded?.width, 180);
+      expect(decoded?.height, 270);
+      verify(
+        () => thumbnailer.saveThumbnailToBytes(
+          srcFile: video.path,
+          width: 270,
+          height: 270,
+          quality: 85,
+        ),
+      ).called(1);
+    });
+
     test('不存在的视频返回 null', () async {
       final result = await generator.generate(
         fileSource,

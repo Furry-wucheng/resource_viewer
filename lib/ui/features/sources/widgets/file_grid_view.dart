@@ -123,64 +123,88 @@ class _FileGridItem extends StatelessWidget {
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: Stack(
+          fit: StackFit.expand,
           children: [
-            // 内容
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 图标/缩略图区域
-                Expanded(
-                  child: Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: Center(child: _buildPreview(theme)),
-                  ),
-                ),
-                // 文件名
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    children: [
-                      Text(
-                        entry.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                      if (tags.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 2,
-                          runSpacing: 2,
-                          alignment: WrapAlignment.center,
-                          children: tags.take(3).map((tag) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _parseColor(
-                                  tag.color,
-                                ).withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                tag.name,
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: _parseColor(tag.color),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+            // 背景图片/图标
+            Container(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: Center(child: _buildPreview(theme)),
             ),
+            // 底部渐变 + 文件名
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(6, 40, 6, 6),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 2,
+                        runSpacing: 2,
+                        alignment: WrapAlignment.center,
+                        children: tags.take(3).map((tag) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white24,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              tag.name,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // 文件夹标识（右下角小图标）
+            if (entry.isDirectory)
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Icon(
+                    Icons.folder,
+                    size: 14,
+                    color: Colors.amber,
+                  ),
+                ),
+              ),
             // 已入库角标
             if (isImported)
               Positioned(
@@ -298,8 +322,4 @@ class _FileGridItem extends StatelessWidget {
     return Icon(iconData, color: color, size: 48);
   }
 
-  Color _parseColor(String hex) {
-    final hexClean = hex.replaceFirst('#', '');
-    return Color(int.parse('FF$hexClean', radix: 16));
-  }
 }

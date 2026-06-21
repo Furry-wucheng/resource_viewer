@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../data/repositories/filesystem_repository.dart';
@@ -17,6 +18,8 @@ import '../../../core/view_models/base_view_model.dart';
 /// 文件浏览器视图模式
 enum ViewMode { list, grid }
 
+const _kViewModeKey = 'file_browser_view_mode';
+
 /// 文件浏览器 ViewModel
 class FileBrowserViewModel extends BaseViewModel {
   FileBrowserViewModel({
@@ -27,7 +30,18 @@ class FileBrowserViewModel extends BaseViewModel {
     required this.tagRepository,
     required this.thumbnailRepository,
     required this.fileSourceFactory,
-  });
+    ViewMode initialViewMode = ViewMode.list,
+  }) : _viewMode = initialViewMode;
+
+  /// 从持久化存储加载上次使用的视图模式
+  static Future<ViewMode> loadViewMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_kViewModeKey);
+    if (index != null && index < ViewMode.values.length) {
+      return ViewMode.values[index];
+    }
+    return ViewMode.list;
+  }
 
   final String sourceId;
   final String sourceName;
@@ -63,7 +77,7 @@ class FileBrowserViewModel extends BaseViewModel {
   }
 
   /// 视图模式
-  ViewMode _viewMode = ViewMode.list;
+  ViewMode _viewMode;
   ViewMode get viewMode => _viewMode;
 
   /// 已入库的资源路径集合（用于判断是否已入库）
@@ -142,7 +156,18 @@ class FileBrowserViewModel extends BaseViewModel {
   /// 切换视图模式
   void toggleViewMode() {
     _viewMode = _viewMode == ViewMode.list ? ViewMode.grid : ViewMode.list;
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setInt(_kViewModeKey, _viewMode.index),
+    );
     notifyListeners();
+  }
+
+  /// 从持久化存储恢复视图模式（异步加载后调用）
+  void applyViewMode(ViewMode mode) {
+    if (_viewMode != mode) {
+      _viewMode = mode;
+      notifyListeners();
+    }
   }
 
   /// 更新面包屑导航

@@ -15,13 +15,12 @@ import 'view_models/file_browser_view_model.dart';
 import 'widgets/directory_tree.dart';
 import 'widgets/file_grid_view.dart';
 import 'widgets/file_list_view.dart';
-import 'widgets/tag_picker_dialog.dart';
 
 /// 文件浏览器页面
 ///
 /// 支持目录导航、面包屑导航、列表/网格视图切换。
 /// ≥900dp 时显示左树右内容的双栏布局。
-class FileBrowserPage extends StatelessWidget {
+class FileBrowserPage extends StatefulWidget {
   const FileBrowserPage({
     super.key,
     required this.sourceId,
@@ -32,18 +31,42 @@ class FileBrowserPage extends StatelessWidget {
   final String sourceName;
 
   @override
+  State<FileBrowserPage> createState() => _FileBrowserPageState();
+}
+
+class _FileBrowserPageState extends State<FileBrowserPage> {
+  late final Future<ViewMode> _viewModeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModeFuture = FileBrowserViewModel.loadViewMode();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => FileBrowserViewModel(
-        sourceId: sourceId,
-        sourceName: sourceName,
-        filesystemRepository: context.read<FilesystemRepository>(),
-        resourceRepository: context.read<ResourceRepository>(),
-        tagRepository: context.read<TagRepository>(),
-        thumbnailRepository: context.read<ThumbnailRepository>(),
-        fileSourceFactory: context.read<FileSourceFactory>(),
-      )..loadDirectory(''),
-      child: const _FileBrowserView(),
+    return FutureBuilder<ViewMode>(
+      future: _viewModeFuture,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return ChangeNotifierProvider(
+          create: (context) => FileBrowserViewModel(
+            sourceId: widget.sourceId,
+            sourceName: widget.sourceName,
+            filesystemRepository: context.read<FilesystemRepository>(),
+            resourceRepository: context.read<ResourceRepository>(),
+            tagRepository: context.read<TagRepository>(),
+            thumbnailRepository: context.read<ThumbnailRepository>(),
+            fileSourceFactory: context.read<FileSourceFactory>(),
+            initialViewMode: snapshot.data!,
+          )..loadDirectory(''),
+          child: const _FileBrowserView(),
+        );
+      },
     );
   }
 }
@@ -228,8 +251,7 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
-                onLongPressImported: (entry) =>
-                    _showTagPicker(context, vm, entry),
+                thumbnailLoader: vm.thumbnailFor,
               )
             : FileGridView(
                 entries: vm.entries,
@@ -240,8 +262,6 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
-                onLongPressImported: (entry) =>
-                    _showTagPicker(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
               );
     }
@@ -282,25 +302,6 @@ class _FileBrowserView extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// 显示标签选择弹窗
-  Future<void> _showTagPicker(
-    BuildContext context,
-    FileBrowserViewModel vm,
-    FileEntry entry,
-  ) async {
-    final currentTags = vm.getTagsForPath(entry.path);
-    final currentTagIds = currentTags.map((t) => t.id).toSet();
-
-    final selectedIds = await TagPickerDialog.show(
-      context,
-      selectedTagIds: currentTagIds,
-    );
-
-    if (selectedIds != null) {
-      await vm.updateResourceTags(entry.path, selectedIds);
-    }
   }
 
   /// 处理点击事件

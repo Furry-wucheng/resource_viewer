@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,6 +22,20 @@ class ThumbnailCacheService {
 
   /// 当前容量上限
   int _capacity = defaultCapacity;
+
+  Future<void> _operationQueue = Future.value();
+
+  Future<T> _runExclusive<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _operationQueue = _operationQueue.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
 
   /// 索引文件名
   static const _indexFileName = 'thumb_index.json';
@@ -69,7 +84,7 @@ class ThumbnailCacheService {
   }
 
   /// 获取缩略图文件路径
-  Future<String?> get(String resourceId) async {
+  Future<String?> get(String resourceId) => _runExclusive(() async {
     final thumbPath = p.join(await _thumbDir, 'thumb_$resourceId.jpg');
     final file = File(thumbPath);
     if (await file.exists()) {
@@ -78,42 +93,43 @@ class ThumbnailCacheService {
       return thumbPath;
     }
     return null;
-  }
+  });
 
   /// 保存缩略图
   ///
   /// 写入后自动检查并淘汰最旧文件。
-  Future<void> put(String resourceId, List<int> bytes) async {
-    final dir = await _thumbDir;
-    await Directory(dir).create(recursive: true);
+  Future<void> put(String resourceId, List<int> bytes) =>
+      _runExclusive(() async {
+        final dir = await _thumbDir;
+        await Directory(dir).create(recursive: true);
 
-    final thumbPath = p.join(dir, 'thumb_$resourceId.jpg');
-    await File(thumbPath).writeAsBytes(bytes);
+        final thumbPath = p.join(dir, 'thumb_$resourceId.jpg');
+        await File(thumbPath).writeAsBytes(bytes);
 
-    // 更新索引
-    await _updateAccessTime(resourceId);
+        // 更新索引
+        await _updateAccessTime(resourceId);
 
-    // 检查并淘汰
-    await _evictIfNeeded();
-  }
+        // 检查并淘汰
+        await _evictIfNeeded();
+      });
 
   /// 删除指定缩略图
-  Future<void> delete(String resourceId) async {
+  Future<void> delete(String resourceId) => _runExclusive(() async {
     final thumbPath = p.join(await _thumbDir, 'thumb_$resourceId.jpg');
     final file = File(thumbPath);
     if (await file.exists()) {
       await file.delete();
     }
     await _removeFromIndex(resourceId);
-  }
+  });
 
   /// 清理所有缓存
-  Future<void> clearCache() async {
+  Future<void> clearCache() => _runExclusive(() async {
     final dir = Directory(await _thumbDir);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
-  }
+  });
 
   /// 更新访问时间索引
   Future<void> _updateAccessTime(String resourceId) async {

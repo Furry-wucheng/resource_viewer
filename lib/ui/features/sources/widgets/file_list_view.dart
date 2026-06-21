@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'dart:typed_data';
 
 import '../../../../domain/models/file_entry.dart';
 import '../../../../domain/models/tag.dart';
@@ -18,6 +19,7 @@ class FileListView extends StatelessWidget {
     this.importedPaths,
     this.resourceTags,
     this.onLongPressImported,
+    this.thumbnailLoader,
   });
 
   final List<FileEntry> entries;
@@ -33,6 +35,7 @@ class FileListView extends StatelessWidget {
 
   /// 长按已入库项目的回调
   final ValueChanged<FileEntry>? onLongPressImported;
+  final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +95,7 @@ class FileListView extends StatelessWidget {
 
   /// 构建文件图标（已入库时加角标）
   Widget _buildIcon(FileEntry entry, bool isImported) {
-    final icon = _getIcon(entry);
+    final icon = _buildPreview(entry);
 
     if (!isImported) return icon;
 
@@ -116,48 +119,80 @@ class FileListView extends StatelessWidget {
     );
   }
 
+  /// 构建预览（有缩略图加载器时尝试加载，否则显示图标）
+  Widget _buildPreview(FileEntry entry) {
+    final loader = thumbnailLoader;
+    if (loader == null) return _getIcon(entry);
+    return FutureBuilder<Uint8List?>(
+      future: loader(entry),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null) return _getIcon(entry);
+        return SizedBox(
+          width: 40,
+          height: 40,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Image.memory(
+                  bytes,
+                  key: ValueKey('list-thumbnail-${entry.path}'),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  cacheWidth: 80,
+                  errorBuilder: (_, _, _) => _getIcon(entry),
+                ),
+              ),
+              // 文件夹标识
+              if (entry.isDirectory)
+                Positioned(
+                  bottom: 1,
+                  right: 1,
+                  child: Container(
+                    padding: const EdgeInsets.all(1),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: const Icon(
+                      Icons.folder,
+                      size: 10,
+                      color: Colors.amber,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _getIcon(FileEntry entry) {
     if (entry.isDirectory) {
       return const Icon(Icons.folder, color: Colors.amber, size: 36);
     }
+    return Icon(_getFileIcon(entry), color: _getFileIconColor(entry), size: 36);
+  }
 
-    final ext = p.extension(entry.name).toLowerCase();
-    final IconData iconData;
-    final Color color;
+  IconData _getFileIcon(FileEntry entry) {
+    return switch (p.extension(entry.name).toLowerCase()) {
+      '.jpg' || '.jpeg' || '.png' || '.gif' || '.webp' || '.bmp' => Icons.image,
+      '.pdf' => Icons.picture_as_pdf,
+      '.mp4' || '.mkv' || '.avi' || '.mov' || '.wmv' || '.webm' => Icons.video_file,
+      '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Icons.archive,
+      _ => Icons.insert_drive_file,
+    };
+  }
 
-    switch (ext) {
-      case '.jpg':
-      case '.jpeg':
-      case '.png':
-      case '.gif':
-      case '.webp':
-      case '.bmp':
-        iconData = Icons.image;
-        color = Colors.green;
-      case '.pdf':
-        iconData = Icons.picture_as_pdf;
-        color = Colors.red;
-      case '.mp4':
-      case '.mkv':
-      case '.avi':
-      case '.mov':
-      case '.wmv':
-      case '.webm':
-        iconData = Icons.video_file;
-        color = Colors.blue;
-      case '.zip':
-      case '.rar':
-      case '.7z':
-      case '.tar':
-      case '.gz':
-        iconData = Icons.archive;
-        color = Colors.orange;
-      default:
-        iconData = Icons.insert_drive_file;
-        color = Colors.grey;
-    }
-
-    return Icon(iconData, color: color, size: 36);
+  Color _getFileIconColor(FileEntry entry) {
+    return switch (p.extension(entry.name).toLowerCase()) {
+      '.jpg' || '.jpeg' || '.png' || '.gif' || '.webp' || '.bmp' => Colors.green,
+      '.pdf' => Colors.red,
+      '.mp4' || '.mkv' || '.avi' || '.mov' || '.wmv' || '.webm' => Colors.blue,
+      '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Colors.orange,
+      _ => Colors.grey,
+    };
   }
 
   /// 构建副标题（文件大小 + 标签芯片）

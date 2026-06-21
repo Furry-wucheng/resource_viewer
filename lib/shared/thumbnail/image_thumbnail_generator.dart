@@ -14,15 +14,14 @@ import 'thumbnail_generator.dart';
 ///
 /// 取资源文件夹内第一张图片，缩放至 2:3 竖版缩略图（180×270）。
 class ImageThumbnailGenerator implements ThumbnailGenerator {
-  /// 缩略图宽度
-  static const thumbWidth = 180;
-
-  /// 缩略图高度
-  static const thumbHeight = 270;
-
   /// 支持的图片扩展名
   static const _supportedExtensions = {
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
   };
 
   /// 自定义输出目录（为 null 时使用系统缓存目录）
@@ -80,10 +79,15 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
   }
 
   static List<int>? _encodeThumbnail(Uint8List bytes) {
-    final image = img.decodeImage(bytes);
-    if (image == null) return null;
-    final thumbnail = _resizeAndCrop(image, thumbWidth, thumbHeight);
-    return img.encodeJpg(thumbnail, quality: 85);
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+    final firstFrame = img.Image.from(decoded.getFrame(0), noAnimation: true);
+    final thumbnail = _resizeAndCrop(
+      firstFrame,
+      ThumbnailGenerator.thumbWidth,
+      ThumbnailGenerator.thumbHeight,
+    );
+    return img.encodeJpg(thumbnail, quality: ThumbnailGenerator.jpegQuality);
   }
 
   /// 缩放并裁剪图片到目标尺寸（居中裁剪）

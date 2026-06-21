@@ -40,4 +40,43 @@ void main() {
     expect(find.byIcon(Icons.image), findsNothing);
     expect(calls, 1);
   });
+
+  testWidgets('文件夹条目右下角显示小文件夹标识', (tester) async {
+    const entry = FileEntry(
+      name: 'my_folder',
+      path: 'my_folder',
+      isDirectory: true,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: FileGridView(entries: [entry]),
+        ),
+      ),
+    );
+
+    // 文件夹图标应出现两次：一次是主图标（48px），一次是右下角标识（14px）
+    expect(find.byIcon(Icons.folder), findsNWidgets(2));
+  });
+
+  testWidgets('文件条目不显示右下角文件夹标识', (tester) async {
+    const entry = FileEntry(
+      name: 'photo.jpg',
+      path: 'photo.jpg',
+      isDirectory: false,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: FileGridView(entries: [entry]),
+        ),
+      ),
+    );
+
+    // 文件条目只有一个图片图标，没有文件夹标识
+    expect(find.byIcon(Icons.folder), findsNothing);
+    expect(find.byIcon(Icons.image), findsOneWidget);
+  });
 }

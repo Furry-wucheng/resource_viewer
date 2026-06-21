@@ -32,17 +32,20 @@ dependencies:
   pdfrx: ^2.4.4
   archive: ^4.0.9
   image: ^4.5.0
+  crypto: ^3.0.6
   extended_image: ^10.0.1
 
   # 视频播放
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
+  fc_native_video_thumbnail: ^3.0.1
 
   # 工具
   uuid: ^4.5.0
   intl: ^0.20.0
   path: ^1.9.1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

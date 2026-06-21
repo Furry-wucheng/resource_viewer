@@ -1,7 +1,7 @@
 # AGENTS.md — Resource Viewer
 
 > Flutter 桌面应用（Windows/macOS/Linux）：多数据源统一收藏管理工具（漫画、图包、PDF）
-> 当前状态：空白脚手架，`lib/main.dart` 仅为 Hello World 占位，无业务代码
+> 当前状态：阶段 1-3 已完成（脚手架/数据层/本地源链路），含文件浏览器、缩略图预览、查看器
 
 ## 命令
 
@@ -78,31 +78,25 @@ Result<T>: sealed class { Ok(value), Err(DomainError) }
 - 查看器 Widget 测试用 1×1 最小 JPEG 字节，不依赖真实文件
 - ViewModel 测试需监听 `notifyListeners` 触发次数，不仅看最终状态
 
-## 依赖（待添加到 pubspec.yaml）
+## 依赖
 
-当前 `pubspec.yaml` 仅有 Flutter SDK 和 `flutter_lints`。按 `doc/tech/01-技术可行性分析.md` 的推荐列表添加依赖。核心依赖：
-
-```
-drift, freezed, go_router, dart_smb2, pdfrx, archive, image,
-mocktail, uuid, intl, file_picker, path_provider, flutter_secure_storage
-media_kit 系列（P2 视频阶段）
-```
+按 `doc/tech/01-技术可行性分析.md` 的推荐列表已添加核心依赖。详见 `pubspec.yaml`。
 
 ## 实施顺序
 
-| 顺序 | 内容 | 说明 |
-|------|------|------|
-| 1 | 搭建骨架 | `app.dart` + go_router + Provider 注册 + 空 Tab 页 |
-| 2 | 数据层 | drift 表定义 + freezed 模型 + Repository |
-| 3 | 本地源链路 | LocalFileSource + 文件浏览器 + 直接阅读查看器 |
-| 4 | 标签系统 | Tag CRUD + 筛选栏 + 批量打标签 |
-| 5 | SMB 源 | SmbFileSource + SMB 配置 + 测试连接 |
-| 6 | 视频播放器 + 画廊模式 | media_kit 视频查看 + GalleryStrategy + 画廊浏览界面 |
-| 7 | 缩略图 | ThumbnailGenerator + LRU 缓存 + 首页网格 |
-| 8 | 组织模式 | 四种 OrganizationStrategy + 自动判定 |
-| 9 | PDF 查看 | PdfRenderService + PdfProvider |
-| 10 | 高级功能 | 拆分资源 + ResourcePicker + 章节模式 |
-| 11 | 压缩包阅读 | ArchiveProvider + 压缩包内图片浏览 |
+| 顺序 | 内容 | 状态 | 说明 |
+|------|------|------|------|
+| 1 | 搭建骨架 | ✅ | `app.dart` + go_router + Provider 注册 + 空 Tab 页 |
+| 2 | 数据层 | ✅ | drift 表定义 + freezed 模型 + Repository |
+| 3 | 本地源链路 | ✅ | LocalFileSource + 文件浏览器 + 缩略图预览 + 查看器 + 视图模式持久化 |
+| 4 | 标签系统 | ⬜ | Tag CRUD + 筛选栏 + 批量打标签 |
+| 5 | SMB 源 | ⬜ | SmbFileSource + SMB 配置 + 测试连接 |
+| 6 | 视频播放器 + 画廊模式 | ⬜ | media_kit 视频查看 + GalleryStrategy + 画廊浏览界面 |
+| 7 | 缩略图 | ⬜ | ThumbnailGenerator + LRU 缓存 + 首页网格 |
+| 8 | 组织模式 | ⬜ | 四种 OrganizationStrategy + 自动判定 |
+| 9 | PDF 查看 | ⬜ | PdfRenderService + PdfProvider |
+| 10 | 高级功能 | ⬜ | 拆分资源 + ResourcePicker + 章节模式 |
+| 11 | 压缩包阅读 | ⬜ | ArchiveProvider + 压缩包内图片浏览 |
 
 ## 文档导航
 

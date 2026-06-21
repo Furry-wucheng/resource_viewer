@@ -8,6 +8,15 @@ import '../file_source/file_source.dart';
 /// - [ArchiveThumbnailGenerator] — 压缩包读取首图
 /// - [VideoThumbnailGenerator] — media_kit 截图
 abstract class ThumbnailGenerator {
+  /// 缩略图宽度（统一常量，所有生成器和预览共用）
+  static const thumbWidth = 180;
+
+  /// 缩略图高度
+  static const thumbHeight = 270;
+
+  /// JPEG 编码质量
+  static const jpegQuality = 85;
+
   /// 生成缩略图
   ///
   /// [source] 文件源
