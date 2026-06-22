@@ -37,7 +37,8 @@
 | `source-list.html` | 数据源列表 — FAB 菜单、SMB 添加弹窗（合并自原多个文件） |
 | `file-browser.html` | 文件浏览器 — 宽屏双栏/窄屏抽屉、列表/网格视图、多选 |
 | `viewer.html` | 统一查看器 — 图片+视频混合、单/双页、滑动条跳页（合并自原多个文件） |
-| `chapter-list.html` | 章节列表 — 纯展示，无 JS 交互 |
+| `chapter-list.html` | 章节列表页 — 响应式双栏布局（≥900dp），grid/list 视图切换，空章节置灰不可点击 |
+| `flat-grid.html` | 平铺网格页（含原"直接阅读"场景） — grid/list 切换，文件夹下钻导航（仅返回键），叶子文件夹自动进入设置 |
 | `resource-detail.html` | 资源详情弹窗 — 标签勾选、组织模式切换 |
 | `settings.html` | 设置 — 缓存容量、开关 toggle、自定义输入 |
 | `resource-picker.html` | ResourcePicker 弹窗 — 目录树、多选、计数 |

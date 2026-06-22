@@ -35,27 +35,6 @@ void main() {
       expect(find.text('全部'), findsOneWidget);
       expect(find.text('收藏'), findsOneWidget);
       expect(find.byIcon(Icons.star), findsOneWidget);
-      expect(find.byKey(const Key('resource-search-field')), findsOneWidget);
-    });
-
-    testWidgets('输入搜索词触发回调', (tester) async {
-      String? query;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: FilterBar(
-              customTags: const [],
-              onSearchChanged: (value) => query = value,
-            ),
-          ),
-        ),
-      );
-
-      await tester.enterText(
-        find.byKey(const Key('resource-search-field')),
-        '海贼王',
-      );
-      expect(query, '海贼王');
     });
 
     testWidgets('显示自定义标签', (tester) async {

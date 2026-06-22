@@ -34,11 +34,42 @@ class ResourceGridItem extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            Expanded(child: _buildThumbnail()),
-            _buildInfo(context),
+            // 缩略图 / 占位
+            _buildThumbnail(),
+            // 底部渐变 + 名称
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(6, 40, 6, 6),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+                child: Text(
+                  resource.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            // 类型角标
+            if (_showsTypeBadge)
+              Positioned(right: 4, bottom: 4, child: _buildTypeBadge()),
+            // 收藏按钮
+            Positioned(left: 4, top: 4, child: _buildFavoriteButton()),
           ],
         ),
       ),
@@ -49,34 +80,18 @@ class ResourceGridItem extends StatelessWidget {
     if (thumbnailPath != null && thumbnailPath!.isNotEmpty) {
       final file = File(thumbnailPath!);
       if (file.existsSync()) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.file(
-              file,
-              cacheWidth: 180,
-              cacheHeight: 270,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _buildPlaceholder(),
-            ),
-            if (_showsTypeBadge)
-              Positioned(right: 4, bottom: 4, child: _buildTypeBadge()),
-            // 收藏星标
-            Positioned(right: 4, top: 4, child: _buildFavoriteButton()),
-          ],
+        return Image.file(
+          file,
+          cacheWidth: 180,
+          cacheHeight: 270,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, _, _) => _buildPlaceholder(),
         );
       }
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        _buildPlaceholder(),
-        if (_showsTypeBadge)
-          Positioned(right: 4, bottom: 4, child: _buildTypeBadge()),
-        // 收藏星标
-        Positioned(right: 4, top: 4, child: _buildFavoriteButton()),
-      ],
-    );
+    return _buildPlaceholder();
   }
 
   Widget _buildPlaceholder() {
@@ -115,17 +130,13 @@ class ResourceGridItem extends StatelessWidget {
   Widget _buildFavoriteButton() {
     return GestureDetector(
       onTap: onFavoriteTap,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Colors.black38,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          isFavorited ? Icons.star : Icons.star_border,
-          color: isFavorited ? AppColors.star : Colors.white,
-          size: 20,
-        ),
+      child: Icon(
+        isFavorited ? Icons.star : Icons.star_border,
+        color: isFavorited ? AppColors.star : Colors.white,
+        size: 22,
+        shadows: const [
+          Shadow(color: Colors.black54, blurRadius: 4),
+        ],
       ),
     );
   }
@@ -133,35 +144,6 @@ class ResourceGridItem extends StatelessWidget {
   bool get _showsTypeBadge =>
       resource.type == ResourceType.pdf ||
       resource.type == ResourceType.archive;
-
-  Widget _buildInfo(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            resource.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
-          ),
-          if (resource.fileCount != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              '${resource.fileCount} 个文件',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   IconData get _typeIcon {
     return switch (resource.type) {

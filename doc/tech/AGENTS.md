@@ -47,7 +47,7 @@
 | 标签交集查询 GROUP BY HAVING | 阶段 04 §4.1 | `tag_repository.dart` |
 | dart_smb2 + SmbFileSource | 阶段 05 §5.2~5.3 | `shared/file_source/smb_file_source.dart` |
 | flutter_secure_storage | 阶段 05 §5.1 | `secure_storage_service.dart` |
-| OrganizationStrategy 四种模式 | 阶段 06 §6.1~6.9 | `shared/organization/` |
+| OrganizationStrategy 三种模式 | 阶段 06 §6.1~6.8 | `shared/organization/` |
 | pdfrx + PdfProvider | 阶段 06 §6.10 | `shared/content_provider/pdf_provider.dart` |
 | archive + ArchiveProvider | 阶段 07 §7.5 | `shared/content_provider/archive_provider.dart` |
 | 键集分页 + ImageCache 调优 | 阶段 07 §7.7~7.8 | `resource_repository.dart`, `app.dart` |

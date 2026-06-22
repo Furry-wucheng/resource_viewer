@@ -38,7 +38,8 @@ doc/
 │   ├── source-list.html       数据源列表页 + 添加 SMB 弹窗（合并）
 │   ├── file-browser.html      文件浏览器（宽屏双栏/窄屏抽屉式）
 │   ├── viewer.html            统一查看器（图片+视频混合浏览、单/双页）
-│   ├── chapter-list.html      章节列表页
+│   ├── chapter-list.html      章节列表页（响应式双栏布局）
+│   ├── flat-grid.html          平铺网格页（grid/list 切换，下钻导航，含原"直接阅读"场景）
 │   ├── resource-detail.html   资源详情弹窗
 │   ├── settings.html          设置页
 │   └── resource-picker.html   ResourcePicker 弹窗
@@ -75,6 +76,10 @@ doc/
 | 实现标签筛选 | prd/02 + prd/05 + tech/04 | `design/homepage.html`（筛选栏交互） |
 | 实现文件浏览器 | prd/03 + prd/06 + tech/02 | `design/file-browser.html` |
 | 实现图片/PDF 查看器 | prd/04 + prd/07 + tech/02 + tech/03 | `design/viewer.html` |
+| 实现章节列表/章节模式 | prd/07 §2 + mvp/06 §6.2-6.3 | `design/chapter-list.html` |
+| 实现平铺网格浏览（含直接阅读） | prd/07 §2 + mvp/06 §6.4 | `design/flat-grid.html` |
+| 实现画廊模式 | prd/07 §2 + mvp/06 §6.5 | `design/flat-grid.html` |
+| 实现资源详情弹窗 | prd/07 §3.2 + mvp/06 §6.14 | `design/resource-detail.html` |
 | 实现设置页 | prd/08 | `design/settings.html` |
 | 实现 ResourcePicker | prd/06 §4.5 + prd/03 | `design/resource-picker.html` |
 | 实现标签管理页 | prd/02 §4.6 | `design/tag-manager.html` |

@@ -16,7 +16,6 @@ class FilterBar extends StatelessWidget {
     this.filteredCount,
     this.totalCount,
     this.hasActiveFilter = false,
-    this.onSearchChanged,
     this.onAllTap,
     this.onFavoriteTap,
     this.onTagTap,
@@ -40,7 +39,6 @@ class FilterBar extends StatelessWidget {
   /// 总资源数量
   final int? totalCount;
   final bool hasActiveFilter;
-  final ValueChanged<String>? onSearchChanged;
 
   /// 点击"全部"回调
   final VoidCallback? onAllTap;
@@ -58,19 +56,6 @@ class FilterBar extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: TextField(
-            key: const Key('resource-search-field'),
-            onChanged: onSearchChanged,
-            decoration: const InputDecoration(
-              hintText: '搜索资源...',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
         // 筛选栏
         SizedBox(
           height: 44,
@@ -138,12 +123,14 @@ class FilterBar extends StatelessWidget {
         final isSelected = selectedTagIds.contains(tag.id);
         final color = _hexToColor(tag.color);
 
-        return _buildFilterChip(
-          label: tag.name,
-          isSelected: isSelected,
-          selectedColor: color,
-          onTap: () => onTagTap?.call(tag.id),
-          theme: theme,
+        return Center(
+          child: _buildFilterChip(
+            label: tag.name,
+            isSelected: isSelected,
+            selectedColor: color,
+            onTap: () => onTagTap?.call(tag.id),
+            theme: theme,
+          ),
         );
       },
     );
