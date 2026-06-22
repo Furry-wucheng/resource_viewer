@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dart_smb2/dart_smb2.dart';
 import 'package:resource_viewer/data/repositories/filesystem_repository.dart';
 import 'package:resource_viewer/data/repositories/source_repository.dart';
 import 'package:resource_viewer/data/services/database_service.dart';
@@ -11,6 +12,8 @@ import 'package:resource_viewer/domain/models/file_entry.dart';
 import 'package:resource_viewer/domain/models/source.dart' as domain;
 import 'package:resource_viewer/shared/file_source/file_source.dart';
 import 'package:resource_viewer/shared/file_source/file_source_factory.dart';
+import '../../helpers/mock_factories.dart';
+import 'package:mocktail/mocktail.dart';
 
 void main() {
   late AppDatabase database;
@@ -98,6 +101,36 @@ void main() {
 
     expect(fileSource.listCallCount, 2);
   });
+
+  test('SMB 测试连接按异常类型映射错误并释放连接', () async {
+    final pool = MockSmbPoolClient();
+    when(
+      () => pool.echo(),
+    ).thenThrow(const Smb2Exception('logon failed', 13, Smb2ErrorType.auth));
+    when(() => pool.disconnect()).thenAnswer((_) async {});
+    final repository = FilesystemRepository(database, factory);
+
+    final result = await repository.testSmbConnection(
+      host: 'server',
+      share: 'share',
+      poolConnector:
+          ({
+            required host,
+            required share,
+            username,
+            password,
+            domain,
+            required timeoutSeconds,
+          }) async {
+            expect(timeoutSeconds, 15);
+            return pool;
+          },
+    );
+
+    expect(result, isA<Err<bool>>());
+    expect((result as Err<bool>).error, isA<SourceAuthError>());
+    verify(() => pool.disconnect()).called(1);
+  });
 }
 
 class _TestFileSourceFactory extends FileSourceFactory {
@@ -107,6 +140,12 @@ class _TestFileSourceFactory extends FileSourceFactory {
 
   @override
   FileSource create(domain.Source source) => this.source;
+
+  @override
+  Future<FileSource> createAsync(
+    domain.Source source, {
+    String? password,
+  }) async => this.source;
 }
 
 class _CountingFileSource implements FileSource {

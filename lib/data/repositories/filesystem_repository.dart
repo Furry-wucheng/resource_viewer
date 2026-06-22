@@ -1,8 +1,12 @@
+import 'package:dart_smb2/dart_smb2.dart';
+
 import '../../domain/models/file_entry.dart';
 import '../../domain/models/source.dart' as domain;
 import '../../domain/core/result.dart';
 import '../../shared/file_source/file_source_factory.dart';
+import '../../shared/file_source/smb_file_source.dart';
 import '../services/database_service.dart';
+import '../services/secure_storage_service.dart';
 import '../models/enums.dart' as drift;
 
 /// 文件系统 Repository
@@ -13,6 +17,7 @@ class FilesystemRepository {
   FilesystemRepository(
     this._db,
     this._fileSourceFactory, {
+    this.secureStorageService,
     this.localTtl = const Duration(seconds: 30),
     this.remoteTtl = const Duration(minutes: 2),
     DateTime Function()? clock,
@@ -20,6 +25,7 @@ class FilesystemRepository {
 
   final AppDatabase _db;
   final FileSourceFactory _fileSourceFactory;
+  final SecureStorageService? secureStorageService;
   final Duration localTtl;
   final Duration remoteTtl;
   final DateTime Function() _clock;
@@ -62,6 +68,41 @@ class FilesystemRepository {
     return request;
   }
 
+  /// 使用临时连接测试 SMB 配置，不写入缓存或数据库。
+  Future<Result<bool>> testSmbConnection({
+    required String host,
+    required String share,
+    int port = 445,
+    String? username,
+    String? password,
+    String? domain,
+    SmbPoolConnector? poolConnector,
+  }) async {
+    final source = SmbFileSource(
+      sourceId: 'smb-connection-test',
+      host: host,
+      share: share,
+      port: port,
+      username: username,
+      password: password,
+      domain: domain,
+      timeoutSeconds: 15,
+      poolConnector: poolConnector,
+    );
+    try {
+      await source.testConnection();
+      return const Ok(true);
+    } on Smb2Exception catch (error) {
+      return Err(_mapSmbError(error));
+    } on ArgumentError catch (error) {
+      return Err(ValidationError(error.message?.toString() ?? 'SMB 配置无效'));
+    } catch (error) {
+      return Err(SourceUnreachableError('无法连接到服务器', cause: error));
+    } finally {
+      await source.disconnect();
+    }
+  }
+
   Future<Result<List<FileEntry>>> _loadDirectory(
     String sourceId,
     String path,
@@ -82,8 +123,19 @@ class FilesystemRepository {
           source = value;
       }
 
-      // 获取 FileSource
-      final fileSource = _fileSourceFactory.create(source);
+      // 获取密码（如果是 SMB 源）
+      String? password;
+      if (source.type == domain.SourceType.smb &&
+          source.passwordStored &&
+          secureStorageService != null) {
+        password = await secureStorageService!.getPassword(sourceId);
+      }
+
+      // 获取 FileSource（异步创建，支持 SMB）
+      final fileSource = await _fileSourceFactory.createAsync(
+        source,
+        password: password,
+      );
 
       // 列出目录
       final entries = await fileSource.listDirectory(path);
@@ -97,8 +149,29 @@ class FilesystemRepository {
       }
 
       return Ok(entries);
+    } on Smb2Exception catch (e) {
+      // 映射 SMB 异常到 DomainError
+      return Err(_mapSmbError(e));
     } catch (e) {
       return Err(DatabaseError('列出目录失败', cause: e));
+    }
+  }
+
+  /// 映射 SMB 异常到 DomainError
+  DomainError _mapSmbError(Smb2Exception e) {
+    switch (e.type) {
+      case Smb2ErrorType.auth:
+        return SourceAuthError('SMB 认证失败', cause: e);
+      case Smb2ErrorType.connection:
+        return SourceUnreachableError('SMB 源不可达', cause: e);
+      case Smb2ErrorType.timeout:
+        return NetworkTimeoutError('连接超时', cause: e);
+      case Smb2ErrorType.fileNotFound:
+        return FileNotFoundError('路径不存在', cause: e);
+      case Smb2ErrorType.accessDenied:
+        return FileAccessDeniedError('权限不足', cause: e);
+      default:
+        return SourceUnreachableError('SMB 错误: ${e.message}', cause: e);
     }
   }
 

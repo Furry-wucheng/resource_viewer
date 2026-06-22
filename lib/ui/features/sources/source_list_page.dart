@@ -1,15 +1,21 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../data/repositories/resource_repository.dart';
 import '../../../data/repositories/source_repository.dart';
+import '../../../data/repositories/filesystem_repository.dart';
 import '../../../domain/core/result.dart';
+import '../../../domain/models/source.dart';
 import '../../core/view_models/base_view_model.dart';
 import 'view_models/source_list_view_model.dart';
 import 'widgets/source_card.dart';
+import 'widgets/smb_config_dialog.dart';
 
 class SourceListPage extends StatelessWidget {
   const SourceListPage({super.key});
@@ -20,6 +26,7 @@ class SourceListPage extends StatelessWidget {
       create: (context) => SourceListViewModel(
         sourceRepository: context.read<SourceRepository>(),
         resourceRepository: context.read<ResourceRepository>(),
+        filesystemRepository: context.read<FilesystemRepository>(),
       )..loadSources(),
       child: const _SourceListView(),
     );
@@ -54,10 +61,7 @@ class _SourceListView extends StatelessWidget {
               Text(vm.errorMessage ?? '加载失败'),
               if (vm.canRetry) ...[
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: vm.retry,
-                  child: const Text('重试'),
-                ),
+                ElevatedButton(onPressed: vm.retry, child: const Text('重试')),
               ],
             ],
           ),
@@ -82,16 +86,13 @@ class _SourceListView extends StatelessWidget {
             color: Theme.of(context).colorScheme.outline,
           ),
           const SizedBox(height: 16),
-          Text(
-            '还没有数据源',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('还没有数据源', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
             '点击 + 添加',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ),
@@ -110,9 +111,15 @@ class _SourceListView extends StatelessWidget {
           source: source,
           resourceCount: count,
           onToggle: (_) => vm.toggleSource(source.id),
-          onRename: () => _showRenameDialog(context, vm, source.id, source.name),
-          onDelete: () => _showDeleteDialog(context, vm, source.id, source.name),
-          onTap: () => context.push('/sources/${source.id}/browser', extra: source.name),
+          onRename: () =>
+              _showRenameDialog(context, vm, source.id, source.name),
+          onDelete: () =>
+              _showDeleteDialog(context, vm, source.id, source.name, count),
+          onTap: () =>
+              context.push('/sources/${source.id}/browser', extra: source.name),
+          onEditSmbCredentials: source.type == SourceType.smb
+              ? () => _showEditSmbCredentialsDialog(context, vm, source)
+              : null,
         );
       },
     );
@@ -144,11 +151,9 @@ class _SourceListView extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.computer),
               title: const Text('添加 SMB 网络共享'),
-              subtitle: const Text('即将推出'),
-              enabled: false,
               onTap: () {
                 Navigator.pop(sheetContext);
-                // TODO: 实现 SMB 源添加
+                _showSmbConfigDialog(pageContext, vm);
               },
             ),
           ],
@@ -157,10 +162,62 @@ class _SourceListView extends StatelessWidget {
     );
   }
 
+  /// 请求存储权限，返回是否已获得授权
+  Future<bool> _requestStoragePermission(BuildContext context) async {
+    if (!Platform.isAndroid) return true;
+
+    // Android 11+ (API 30+): 需要 MANAGE_EXTERNAL_STORAGE
+    if (await Permission.manageExternalStorage.isGranted) return true;
+
+    // 先尝试普通存储权限（Android 10 及以下）
+    final status = await Permission.storage.request();
+    if (status.isGranted) return true;
+
+    // Android 11+：引导用户到系统设置开启「所有文件访问」
+    if (!context.mounted) return false;
+    final shouldOpen = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('需要存储权限'),
+        content: const Text('请在设置中开启「所有文件访问」权限，以便浏览本地文件。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('去设置'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldOpen == true) {
+      await Permission.manageExternalStorage.request();
+      return Permission.manageExternalStorage.isGranted;
+    }
+    return false;
+  }
+
   Future<void> _pickLocalFolder(
     BuildContext context,
     SourceListViewModel vm,
   ) async {
+    // 先请求存储权限
+    final granted = await _requestStoragePermission(context);
+    if (!granted) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('未授予存储权限，无法添加本地文件夹'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     final result = await FilePicker.platform.getDirectoryPath();
     if (result == null) return;
     if (!context.mounted) return;
@@ -184,9 +241,47 @@ class _SourceListView extends StatelessWidget {
         ),
       );
     } else if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已添加数据源：$name')));
+    }
+  }
+
+  Future<void> _showSmbConfigDialog(
+    BuildContext context,
+    SourceListViewModel vm,
+  ) async {
+    final result = await SmbConfigDialog.show(
+      context,
+      onTestConnection: vm.testSmbConnection,
+    );
+    if (result == null || !context.mounted) return;
+
+    // 构建 rootPath（UNC 格式）
+    final rootPath = '\\\\${result.host}\\${result.share}';
+
+    final addResult = await vm.addSmbSource(
+      name: result.name,
+      rootPath: rootPath,
+      host: result.host,
+      port: result.port,
+      username: result.username,
+      password: result.password,
+      domain: result.domain,
+    );
+
+    if (addResult is Err && context.mounted) {
+      final error = (addResult as Err).error;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加数据源：$name')),
+        SnackBar(
+          content: Text('添加失败: ${error.message}'),
+          backgroundColor: Colors.red,
+        ),
       );
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已添加 SMB 数据源：${result.name}')));
     }
   }
 
@@ -246,12 +341,16 @@ class _SourceListView extends StatelessWidget {
     SourceListViewModel vm,
     String id,
     String name,
+    int resourceCount,
   ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除数据源'),
-        content: Text('确定删除"$name"？\n\n删除后将同时移除该源下的所有资源和缩略图，此操作不可撤销。'),
+        content: Text(
+          '确定要删除数据源“$name”吗？该源下的 $resourceCount 个资源将被移除，'
+          '绑定的标签关联也会一并清除。标签本身会保留。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -278,5 +377,54 @@ class _SourceListView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showEditSmbCredentialsDialog(
+    BuildContext context,
+    SourceListViewModel vm,
+    Source source,
+  ) async {
+    final result = await SmbConfigDialog.show(
+      context,
+      initialName: source.name,
+      initialHost: source.host,
+      initialShare: _extractShareFromRootPath(source.rootPath),
+      initialPort: source.port ?? 445,
+      initialUsername: source.username,
+      initialDomain: source.domain,
+      isEditMode: true,
+      onTestConnection: vm.testSmbConnection,
+    );
+
+    if (result == null || !context.mounted) return;
+
+    final updateResult = await vm.updateSmbCredentials(
+      sourceId: source.id,
+      username: result.username,
+      password: result.password,
+      domain: result.domain,
+    );
+
+    if (updateResult is Err && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('更新凭据失败: ${updateResult.error.message}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('SMB 凭据已更新')));
+    }
+  }
+
+  String? _extractShareFromRootPath(String rootPath) {
+    // 处理 \\host\share 格式
+    if (rootPath.startsWith('\\\\')) {
+      final parts = rootPath.substring(2).split('\\');
+      if (parts.length >= 2) return parts[1];
+    }
+    return null;
   }
 }

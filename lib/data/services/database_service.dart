@@ -116,6 +116,24 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// 标记数据源下的所有资源为不可达
+  Future<void> markResourcesUnavailableBySource(String sourceId) async {
+    await (update(resources)..where((r) => r.sourceId.equals(sourceId))).write(
+      ResourcesCompanion(
+        isAvailable: const Value(false),
+      ),
+    );
+  }
+
+  /// 标记数据源下的所有资源为可达
+  Future<void> markResourcesAvailableBySource(String sourceId) async {
+    await (update(resources)..where((r) => r.sourceId.equals(sourceId))).write(
+      ResourcesCompanion(
+        isAvailable: const Value(true),
+      ),
+    );
+  }
+
   // ===== Resource DAO =====
 
   /// 获取所有资源

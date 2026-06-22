@@ -14,6 +14,8 @@ class SourceCard extends StatelessWidget {
     required this.onRename,
     required this.onDelete,
     required this.onTap,
+    this.isScanning = false,
+    this.onEditSmbCredentials,
   });
 
   final Source source;
@@ -23,9 +25,17 @@ class SourceCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onTap;
 
+  /// 是否正在扫描
+  final bool isScanning;
+
+  /// 编辑 SMB 凭据回调（仅 SMB 源有效）
+  final VoidCallback? onEditSmbCredentials;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isEnabled = source.enabled;
+    final isAvailable = source.isAvailable;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -35,30 +45,19 @@ class SourceCard extends StatelessWidget {
           source.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: !isEnabled || !isAvailable
+              ? TextStyle(color: theme.colorScheme.outline)
+              : null,
         ),
-        subtitle: Text(
-          '${source.typeLabel} · $resourceCount 个资源',
-          style: theme.textTheme.bodySmall,
-        ),
+        subtitle: _buildSubtitle(theme, isEnabled, isAvailable),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             // 状态指示
-            if (!source.isAvailable)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Tooltip(
-                  message: '不可用',
-                  child: Icon(
-                    Icons.cloud_off,
-                    size: 16,
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-              ),
+            _buildStatusIndicator(theme, isEnabled, isAvailable),
             // 启用/禁用开关
             Switch(
-              value: source.enabled,
+              value: isEnabled,
               onChanged: onToggle,
             ),
             // 更多菜单
@@ -67,6 +66,8 @@ class SourceCard extends StatelessWidget {
                 switch (value) {
                   case 'rename':
                     onRename();
+                  case 'edit_smb':
+                    onEditSmbCredentials?.call();
                   case 'delete':
                     onDelete();
                 }
@@ -81,6 +82,16 @@ class SourceCard extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
+                if (source.type == SourceType.smb && onEditSmbCredentials != null)
+                  const PopupMenuItem(
+                    value: 'edit_smb',
+                    child: ListTile(
+                      leading: Icon(Icons.key),
+                      title: Text('编辑 SMB 凭据'),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 const PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
@@ -94,9 +105,100 @@ class SourceCard extends StatelessWidget {
             ),
           ],
         ),
-        onTap: onTap,
+        onTap: isEnabled ? onTap : null,
       ),
     );
+  }
+
+  Widget _buildSubtitle(ThemeData theme, bool isEnabled, bool isAvailable) {
+    if (isScanning) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '扫描中...',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      );
+    }
+
+    if (!isEnabled) {
+      return Text(
+        '${source.typeLabel} · 已禁用',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.outline,
+        ),
+      );
+    }
+
+    if (!isAvailable) {
+      return Text(
+        '${source.typeLabel} · 不可用',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.error,
+        ),
+      );
+    }
+
+    return Text(
+      '${source.typeLabel} · $resourceCount 个资源',
+      style: theme.textTheme.bodySmall,
+    );
+  }
+
+  Widget _buildStatusIndicator(ThemeData theme, bool isEnabled, bool isAvailable) {
+    if (isScanning) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      );
+    }
+
+    if (!isEnabled) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Tooltip(
+          message: '已禁用',
+          child: Icon(
+            Icons.pause_circle_outline,
+            size: 16,
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      );
+    }
+
+    if (!isAvailable) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Tooltip(
+          message: '不可用',
+          child: Icon(
+            Icons.cloud_off,
+            size: 16,
+            color: theme.colorScheme.error,
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildIcon(ThemeData theme) {

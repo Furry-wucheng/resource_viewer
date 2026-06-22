@@ -1,11 +1,13 @@
 import 'package:drift/drift.dart';
 
 import '../services/database_service.dart';
+import '../services/secure_storage_service.dart';
 import '../services/thumbnail_cache_service.dart';
 import '../models/sources.dart' as drift;
 import '../../domain/models/source.dart' as domain;
 import '../../domain/core/result.dart';
 import '../../shared/file_source/file_source_factory.dart';
+import 'filesystem_repository.dart';
 
 /// 数据源 Repository
 ///
@@ -15,11 +17,15 @@ class SourceRepository {
     this._db, {
     this.fileSourceFactory,
     this.thumbnailCacheService,
+    this.secureStorageService,
+    this.filesystemRepository,
   });
 
   final AppDatabase _db;
   final FileSourceFactory? fileSourceFactory;
   final ThumbnailCacheService? thumbnailCacheService;
+  final SecureStorageService? secureStorageService;
+  final FilesystemRepository? filesystemRepository;
 
   /// 获取所有数据源
   Future<Result<List<domain.Source>>> getAllSources() async {
@@ -92,6 +98,101 @@ class SourceRepository {
     }
   }
 
+  /// 创建 SMB 源，并保证密码标记与安全存储保持一致。
+  Future<Result<domain.Source>> createSmbSource({
+    required String id,
+    required String name,
+    required String rootPath,
+    required String host,
+    int port = 445,
+    String? username,
+    String? password,
+    String? domainName,
+  }) async {
+    final hasPassword = password != null && password.isNotEmpty;
+    if (hasPassword && secureStorageService == null) {
+      return const Err(DatabaseError('SecureStorageService 未初始化'));
+    }
+
+    try {
+      if (hasPassword) {
+        await secureStorageService!.savePassword(id, password);
+      }
+
+      final result = await createSource(
+        id: id,
+        name: name,
+        type: domain.SourceType.smb,
+        rootPath: rootPath,
+        host: host,
+        port: port,
+        username: username,
+        passwordStored: hasPassword,
+        domainName: domainName,
+        isAvailable: false,
+      );
+
+      if (result is Err && hasPassword) {
+        await secureStorageService!.deletePassword(id);
+      }
+      return result;
+    } catch (error) {
+      if (hasPassword) {
+        await secureStorageService?.deletePassword(id);
+      }
+      return Err(DatabaseError('创建 SMB 数据源失败', cause: error));
+    }
+  }
+
+  /// 保存并应用新的 SMB 凭据。
+  Future<Result<void>> updateSmbCredentials({
+    required String sourceId,
+    String? username,
+    required String password,
+    String? domainName,
+  }) async {
+    if (secureStorageService == null) {
+      return const Err(DatabaseError('SecureStorageService 未初始化'));
+    }
+
+    try {
+      final sourceResult = await getSourceById(sourceId);
+      final domain.Source source;
+      switch (sourceResult) {
+        case Ok(:final value):
+          if (value == null) {
+            return const Err(DatabaseError('数据源不存在'));
+          }
+          source = value;
+        case Err(:final error):
+          return Err(error);
+      }
+
+      await secureStorageService!.savePassword(sourceId, password);
+      final updateResult = await updateSource(
+        source.copyWith(
+          username: username,
+          passwordStored: true,
+          domain: domainName,
+        ),
+      );
+      switch (updateResult) {
+        case Err(:final error):
+          return Err(error);
+        case Ok():
+          break;
+      }
+
+      await fileSourceFactory?.disconnect(sourceId);
+      filesystemRepository?.invalidateCache(sourceId);
+      await markSourceAvailable(sourceId);
+      await markResourcesAvailable(sourceId);
+      return const Ok(null);
+    } catch (error) {
+      return Err(DatabaseError('更新 SMB 凭据失败', cause: error));
+    }
+  }
+
   /// 更新数据源
   Future<Result<domain.Source>> updateSource(domain.Source source) async {
     try {
@@ -123,13 +224,19 @@ class SourceRepository {
     }
   }
 
-  /// 删除数据源（级联删除关联的 Resources、ResourceTags、缩略图缓存 + disconnect）
+  /// 删除数据源（级联删除关联的 Resources、ResourceTags、缩略图缓存 + disconnect + 删除密码）
   Future<Result<void>> deleteSource(String id) async {
     try {
       final resources = await _db.getResourcesBySourceId(id);
 
       // 断开 FileSource 连接
       await fileSourceFactory?.disconnect(id);
+      filesystemRepository?.invalidateCache(id);
+
+      // 删除 SecureStorage 中的密码
+      if (secureStorageService != null) {
+        await secureStorageService!.deletePassword(id);
+      }
 
       // 缩略图不在数据库事务中；逐项删除可避免误清其他源的缓存。
       if (thumbnailCacheService != null) {
@@ -195,6 +302,88 @@ class SourceRepository {
       return const Ok(null);
     } catch (e) {
       return Err(DatabaseError('标记数据源可达失败', cause: e));
+    }
+  }
+
+  /// 标记数据源下的所有资源为不可达
+  Future<Result<void>> markResourcesUnavailable(String sourceId) async {
+    try {
+      await _db.markResourcesUnavailableBySource(sourceId);
+      return const Ok(null);
+    } catch (e) {
+      return Err(DatabaseError('标记资源不可达失败', cause: e));
+    }
+  }
+
+  /// 标记数据源下的所有资源为可达
+  Future<Result<void>> markResourcesAvailable(String sourceId) async {
+    try {
+      await _db.markResourcesAvailableBySource(sourceId);
+      return const Ok(null);
+    } catch (e) {
+      return Err(DatabaseError('标记资源可达失败', cause: e));
+    }
+  }
+
+  /// 检查数据源可用性
+  ///
+  /// 对于 SMB 源，会尝试连接测试。
+  /// 对于本地源，会检查路径是否存在。
+  Future<Result<bool>> checkAvailability(String sourceId) async {
+    try {
+      final sourceResult = await getSourceById(sourceId);
+      switch (sourceResult) {
+        case Ok(:final value):
+          if (value == null) {
+            return const Err(DatabaseError('数据源不存在'));
+          }
+
+          // 使用 FileSourceFactory 测试连接
+          if (fileSourceFactory != null) {
+            final fileSource = await fileSourceFactory!.createAsync(value);
+            bool isAvailable;
+            try {
+              isAvailable = await fileSource.testConnection();
+            } catch (_) {
+              isAvailable = false;
+              await fileSourceFactory!.disconnect(sourceId);
+            }
+
+            if (isAvailable) {
+              await markSourceAvailable(sourceId);
+              await markResourcesAvailable(sourceId);
+            } else {
+              await markSourceUnavailable(sourceId);
+              await markResourcesUnavailable(sourceId);
+            }
+
+            return Ok(isAvailable);
+          }
+
+          return const Ok(false);
+        case Err(:final error):
+          return Err(error);
+      }
+    } catch (e) {
+      return Err(DatabaseError('检查数据源可用性失败', cause: e));
+    }
+  }
+
+  /// 检查所有启用的 SMB 源的可用性
+  ///
+  /// 通常在应用启动时调用。
+  Future<void> checkAllSmbSources() async {
+    final sourcesResult = await getAllSources();
+    switch (sourcesResult) {
+      case Ok(:final value):
+        for (final source in value) {
+          if (source.type == domain.SourceType.smb && source.enabled) {
+            await checkAvailability(source.id);
+          }
+        }
+      case Err():
+        // 忽略错误，不影响启动
+        break;
     }
   }
 
