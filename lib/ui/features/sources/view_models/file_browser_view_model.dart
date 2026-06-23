@@ -21,7 +21,18 @@ import '../../../core/view_models/base_view_model.dart';
 /// 文件浏览器视图模式
 enum ViewMode { list, grid }
 
+/// 文件浏览器排序方式（按 source + path 独立持久化）
+enum FileBrowserSort {
+  nameAsc,
+  nameDesc,
+  modifiedDesc,
+  modifiedAsc,
+  sizeDesc,
+  sizeAsc,
+}
+
 const _kViewModeKey = 'file_browser_view_mode';
+const _kDirectorySortPrefix = 'file_browser_directory_sort';
 
 // ============================================================================
 // 缩略图加载池 — 限制并发，防止同时大量 thumbnailFor 导致 IO/CPU/内存尖峰
@@ -183,6 +194,9 @@ class FileBrowserViewModel extends BaseViewModel {
   List<FileEntry> _entries = [];
   List<FileEntry> get entries => _entries;
 
+  FileBrowserSort _sort = FileBrowserSort.nameAsc;
+  FileBrowserSort get sort => _sort;
+
   /// 视图模式
   ViewMode _viewMode;
   ViewMode get viewMode => _viewMode;
@@ -225,6 +239,7 @@ class FileBrowserViewModel extends BaseViewModel {
     startLoading();
     _currentPath = path;
     _updateBreadcrumbs(path);
+    await _loadSortForPath(path);
     // 切换目录时清理缩略图状态：清空队列 + 释放已缓存字节
     _clearThumbnailState();
     _visibleCount = _initialVisibleCount;
@@ -232,7 +247,7 @@ class FileBrowserViewModel extends BaseViewModel {
     final result = await filesystemRepository.listDirectory(sourceId, path);
     switch (result) {
       case Ok(:final value):
-        _entries = value;
+        _entries = _sortEntries(value);
         await _loadImportedPaths();
         setResult(const Ok(null));
       case Err(:final error):
@@ -278,6 +293,73 @@ class FileBrowserViewModel extends BaseViewModel {
       _viewMode = mode;
       notifyListeners();
     }
+  }
+
+  Future<void> setSort(FileBrowserSort sort) async {
+    if (_sort == sort) return;
+    _sort = sort;
+    _entries = _sortEntries(_entries);
+    _visibleCount = _initialVisibleCount;
+    _clearThumbnailState();
+    notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_sortStorageKey(_currentPath), sort.index);
+  }
+
+  Future<void> _loadSortForPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_sortStorageKey(path));
+    _sort = index != null && index >= 0 && index < FileBrowserSort.values.length
+        ? FileBrowserSort.values[index]
+        : FileBrowserSort.nameAsc;
+  }
+
+  String _sortStorageKey(String path) {
+    final normalizedPath = path.isEmpty
+        ? '__root__'
+        : Uri.encodeComponent(path);
+    return '$_kDirectorySortPrefix.$sourceId.$normalizedPath';
+  }
+
+  List<FileEntry> _sortEntries(List<FileEntry> entries) {
+    final sorted = [...entries];
+    sorted.sort((a, b) {
+      if (a.isDirectory != b.isDirectory) {
+        return a.isDirectory ? -1 : 1;
+      }
+      final result = switch (_sort) {
+        FileBrowserSort.nameAsc => _compareName(a, b),
+        FileBrowserSort.nameDesc => _compareName(b, a),
+        FileBrowserSort.modifiedDesc => _compareDate(
+          b.modifiedAt,
+          a.modifiedAt,
+        ),
+        FileBrowserSort.modifiedAsc => _compareDate(a.modifiedAt, b.modifiedAt),
+        FileBrowserSort.sizeDesc => _compareSize(b.size, a.size),
+        FileBrowserSort.sizeAsc => _compareSize(a.size, b.size),
+      };
+      return result == 0 ? _compareName(a, b) : result;
+    });
+    return sorted;
+  }
+
+  int _compareName(FileEntry a, FileEntry b) {
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  }
+
+  int _compareDate(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
+  }
+
+  int _compareSize(BigInt? a, BigInt? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
   }
 
   /// 更新面包屑导航

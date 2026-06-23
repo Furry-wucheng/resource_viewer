@@ -3,32 +3,59 @@ enum ResourceSort {
   /// 按创建时间倒序（MVP 必选）
   createdDesc,
 
+  /// 按创建时间升序
+  createdAsc,
+
   /// 按名称升序（预留）
   nameAsc,
+
+  /// 按名称降序
+  nameDesc,
 }
 
 /// 键集分页游标
 class ResourceCursor {
   const ResourceCursor({
-    required this.lastCreatedAt,
+    this.lastCreatedAt,
+    this.lastName,
     required this.lastId,
   });
 
   /// 上一页最后一条的 createdAt（ISO 8601）
-  final String lastCreatedAt;
+  final String? lastCreatedAt;
+
+  /// 上一页最后一条的 name
+  final String? lastName;
 
   /// 上一页最后一条的 id
   final String lastId;
 
   /// 编码为字符串供分页传递
-  String encode() => '$lastCreatedAt|$lastId';
+  String encode() {
+    final createdAt = lastCreatedAt;
+    if (createdAt != null) return 'created|$createdAt|$lastId';
+    final name = lastName;
+    if (name != null) return 'name|${Uri.encodeComponent(name)}|$lastId';
+    return 'id|$lastId';
+  }
 
   /// 从编码字符串解析
   static ResourceCursor? decode(String? encoded) {
     if (encoded == null || encoded.isEmpty) return null;
     final parts = encoded.split('|');
-    if (parts.length != 2) return null;
-    return ResourceCursor(lastCreatedAt: parts[0], lastId: parts[1]);
+    if (parts.length == 2) {
+      return ResourceCursor(lastCreatedAt: parts[0], lastId: parts[1]);
+    }
+    if (parts.length != 3) return null;
+    return switch (parts[0]) {
+      'created' => ResourceCursor(lastCreatedAt: parts[1], lastId: parts[2]),
+      'name' => ResourceCursor(
+        lastName: Uri.decodeComponent(parts[1]),
+        lastId: parts[2],
+      ),
+      'id' => ResourceCursor(lastId: parts[2]),
+      _ => null,
+    };
   }
 }
 

@@ -36,7 +36,9 @@ void main() {
           type: Value(type),
           relativePath: Value(relativePath),
           isAvailable: const Value(true),
-          createdAt: createdAt != null ? Value(createdAt) : const Value.absent(),
+          createdAt: createdAt != null
+              ? Value(createdAt)
+              : const Value.absent(),
         ),
       );
     }
@@ -86,16 +88,19 @@ void main() {
     test('最后一页 hasMore 为 false', () async {
       await seedStandard();
 
-      final p1 = (await resources.queryResources(ResourceQuery(pageSize: 8)))
-          as Ok<PagedResult<domain.Resource>>;
+      final p1 =
+          (await resources.queryResources(ResourceQuery(pageSize: 8)))
+              as Ok<PagedResult<domain.Resource>>;
       expect(p1.value.hasMore, isTrue);
 
-      final p2 = (await resources.queryResources(
-        ResourceQuery(
-          pageSize: 8,
-          cursor: ResourceCursor.decode(p1.value.nextCursor!),
-        ),
-      )) as Ok<PagedResult<domain.Resource>>;
+      final p2 =
+          (await resources.queryResources(
+                ResourceQuery(
+                  pageSize: 8,
+                  cursor: ResourceCursor.decode(p1.value.nextCursor!),
+                ),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
       expect(p2.value.items.length, 7);
       expect(p2.value.hasMore, isFalse);
       expect(p2.value.nextCursor, isNull);
@@ -136,17 +141,20 @@ void main() {
         );
       }
 
-      final p1 = (await resources.queryResources(ResourceQuery(pageSize: 3)))
-          as Ok<PagedResult<domain.Resource>>;
+      final p1 =
+          (await resources.queryResources(ResourceQuery(pageSize: 3)))
+              as Ok<PagedResult<domain.Resource>>;
       expect(p1.value.items.length, 3);
       expect(p1.value.hasMore, isTrue);
 
-      final p2 = (await resources.queryResources(
-        ResourceQuery(
-          pageSize: 3,
-          cursor: ResourceCursor.decode(p1.value.nextCursor!),
-        ),
-      )) as Ok<PagedResult<domain.Resource>>;
+      final p2 =
+          (await resources.queryResources(
+                ResourceQuery(
+                  pageSize: 3,
+                  cursor: ResourceCursor.decode(p1.value.nextCursor!),
+                ),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
       expect(p2.value.items.length, 2);
       expect(p2.value.hasMore, isFalse);
 
@@ -173,8 +181,18 @@ void main() {
         enabled: false,
         isAvailable: true,
       );
-      await insertResourceRaw(id: 'r_a', sourceId: 'source_a', name: '可见', relativePath: 'a');
-      await insertResourceRaw(id: 'r_b', sourceId: 'source_b', name: '不可见', relativePath: 'b');
+      await insertResourceRaw(
+        id: 'r_a',
+        sourceId: 'source_a',
+        name: '可见',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_b',
+        sourceId: 'source_b',
+        name: '不可见',
+        relativePath: 'b',
+      );
 
       final result = await resources.queryResources(ResourceQuery());
       final page = (result as Ok<PagedResult<domain.Resource>>).value;
@@ -196,8 +214,18 @@ void main() {
         rootPath: '/b',
         isAvailable: false,
       );
-      await insertResourceRaw(id: 'r_a', sourceId: 'source_a', name: '可见', relativePath: 'a');
-      await insertResourceRaw(id: 'r_b', sourceId: 'source_b', name: '隐藏', relativePath: 'b');
+      await insertResourceRaw(
+        id: 'r_a',
+        sourceId: 'source_a',
+        name: '可见',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_b',
+        sourceId: 'source_b',
+        name: '隐藏',
+        relativePath: 'b',
+      );
 
       final result = await resources.queryResources(ResourceQuery());
       final page = (result as Ok<PagedResult<domain.Resource>>).value;
@@ -214,7 +242,12 @@ void main() {
       );
       await tags.createTag(id: 't1', name: '标签1', color: '#111111');
       for (final id in ['r_a', 'r_b', 'r_c']) {
-        await insertResourceRaw(id: id, sourceId: 'source', name: id, relativePath: id);
+        await insertResourceRaw(
+          id: id,
+          sourceId: 'source',
+          name: id,
+          relativePath: id,
+        );
       }
       await tags.addTagToResource('r_a', 't1');
       await tags.addTagToResource('r_c', 't1');
@@ -237,7 +270,12 @@ void main() {
       await tags.createTag(id: 't1', name: 'A', color: '#111111');
       await tags.createTag(id: 't2', name: 'B', color: '#222222');
       for (final id in ['r_a', 'r_b', 'r_c']) {
-        await insertResourceRaw(id: id, sourceId: 'source', name: id, relativePath: id);
+        await insertResourceRaw(
+          id: id,
+          sourceId: 'source',
+          name: id,
+          relativePath: id,
+        );
       }
       await tags.addTagToResource('r_a', 't1');
       await tags.addTagToResource('r_a', 't2');
@@ -259,9 +297,24 @@ void main() {
         rootPath: '/tmp',
         isAvailable: true,
       );
-      await insertResourceRaw(id: 'r_a', sourceId: 'source', name: 'HelloWorld', relativePath: 'a');
-      await insertResourceRaw(id: 'r_b', sourceId: 'source', name: 'hello_kitty', relativePath: 'b');
-      await insertResourceRaw(id: 'r_c', sourceId: 'source', name: 'nothing', relativePath: 'c');
+      await insertResourceRaw(
+        id: 'r_a',
+        sourceId: 'source',
+        name: 'HelloWorld',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_b',
+        sourceId: 'source',
+        name: 'hello_kitty',
+        relativePath: 'b',
+      );
+      await insertResourceRaw(
+        id: 'r_c',
+        sourceId: 'source',
+        name: 'nothing',
+        relativePath: 'c',
+      );
 
       final result = await resources.queryResources(
         ResourceQuery(searchQuery: 'hello'),
@@ -282,8 +335,18 @@ void main() {
         isAvailable: true,
       );
       await tags.createTag(id: 't1', name: '标签', color: '#111111');
-      await insertResourceRaw(id: 'r_a', sourceId: 'source', name: 'Hello漫画', relativePath: 'a');
-      await insertResourceRaw(id: 'r_b', sourceId: 'source', name: 'Hello画集', relativePath: 'b');
+      await insertResourceRaw(
+        id: 'r_a',
+        sourceId: 'source',
+        name: 'Hello漫画',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_b',
+        sourceId: 'source',
+        name: 'Hello画集',
+        relativePath: 'b',
+      );
       await tags.addTagToResource('r_a', 't1');
 
       final result = await resources.queryResources(
@@ -302,8 +365,18 @@ void main() {
         isAvailable: true,
       );
       const favTagId = '00000000-0000-0000-0000-000000000001';
-      await insertResourceRaw(id: 'r_a', sourceId: 'source', name: 'r_a', relativePath: 'a');
-      await insertResourceRaw(id: 'r_b', sourceId: 'source', name: 'r_b', relativePath: 'b');
+      await insertResourceRaw(
+        id: 'r_a',
+        sourceId: 'source',
+        name: 'r_a',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_b',
+        sourceId: 'source',
+        name: 'r_b',
+        relativePath: 'b',
+      );
       await tags.addTagToResource('r_a', favTagId);
 
       final result = await resources.queryResources(
@@ -358,6 +431,77 @@ void main() {
       } while (cursor != null);
 
       expect(collected, 10);
+    });
+
+    test('名称排序支持分页且结果稳定', () async {
+      await sources.createSource(
+        id: 'source',
+        name: '本地',
+        type: SourceType.local,
+        rootPath: '/tmp',
+        isAvailable: true,
+      );
+      await insertResourceRaw(
+        id: 'r_002',
+        sourceId: 'source',
+        name: 'Bravo',
+        relativePath: 'b',
+      );
+      await insertResourceRaw(
+        id: 'r_001',
+        sourceId: 'source',
+        name: 'Alpha',
+        relativePath: 'a',
+      );
+      await insertResourceRaw(
+        id: 'r_003',
+        sourceId: 'source',
+        name: 'Charlie',
+        relativePath: 'c',
+      );
+
+      final p1 =
+          (await resources.queryResources(
+                ResourceQuery(sort: ResourceSort.nameAsc, pageSize: 2),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
+      expect(p1.value.items.map((r) => r.name), ['Alpha', 'Bravo']);
+      expect(p1.value.hasMore, isTrue);
+
+      final p2 =
+          (await resources.queryResources(
+                ResourceQuery(
+                  sort: ResourceSort.nameAsc,
+                  pageSize: 2,
+                  cursor: ResourceCursor.decode(p1.value.nextCursor),
+                ),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
+      expect(p2.value.items.map((r) => r.name), ['Charlie']);
+      expect(p2.value.hasMore, isFalse);
+    });
+
+    test('创建时间升序排序支持分页', () async {
+      await seedStandard();
+
+      final p1 =
+          (await resources.queryResources(
+                ResourceQuery(sort: ResourceSort.createdAsc, pageSize: 5),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
+      expect(p1.value.items.first.id, 'r_000');
+      expect(p1.value.items.last.id, 'r_004');
+
+      final p2 =
+          (await resources.queryResources(
+                ResourceQuery(
+                  sort: ResourceSort.createdAsc,
+                  pageSize: 5,
+                  cursor: ResourceCursor.decode(p1.value.nextCursor),
+                ),
+              ))
+              as Ok<PagedResult<domain.Resource>>;
+      expect(p2.value.items.first.id, 'r_005');
     });
   });
 }

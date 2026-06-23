@@ -11,6 +11,7 @@ import 'package:resource_viewer/domain/models/tag.dart';
 import 'package:resource_viewer/shared/file_source/file_source.dart';
 import 'package:resource_viewer/shared/file_source/file_source_factory.dart';
 import 'package:resource_viewer/ui/features/sources/view_models/file_browser_view_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _MockFilesystemRepository extends Mock implements FilesystemRepository {}
 
@@ -32,6 +33,10 @@ class _MockFileSourceFactory extends Mock implements FileSourceFactory {}
 class _MockFileSource extends Mock implements FileSource {}
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('含深层视频的文件夹不会被当作空资源跳过', () async {
     final filesystem = _MockFilesystemRepository();
     final resources = _MockResourceRepository();
@@ -133,6 +138,65 @@ void main() {
     verify(() => filesystem.listDirectory('source', 'mixed/videos')).called(1);
   });
 
+  test('文件浏览器排序按目录独立持久化', () async {
+    final filesystem = _MockFilesystemRepository();
+    final resources = _MockResourceRepository();
+    final tags = _MockTagRepository();
+    final thumbnails = _MockThumbnailRepository();
+    final sourceFactory = _MockFileSourceFactory();
+
+    when(() => filesystem.listDirectory('source', '')).thenAnswer(
+      (_) async => Ok([
+        FileEntry(
+          name: 'b.jpg',
+          path: 'b.jpg',
+          isDirectory: false,
+          size: BigInt.from(2),
+        ),
+        FileEntry(
+          name: 'a.jpg',
+          path: 'a.jpg',
+          isDirectory: false,
+          size: BigInt.from(1),
+        ),
+        const FileEntry(name: 'dir', path: 'dir', isDirectory: true),
+      ]),
+    );
+    when(() => filesystem.listDirectory('source', 'dir')).thenAnswer(
+      (_) async => Ok([
+        const FileEntry(name: 'z.jpg', path: 'dir/z.jpg', isDirectory: false),
+        const FileEntry(name: 'a.jpg', path: 'dir/a.jpg', isDirectory: false),
+      ]),
+    );
+    when(
+      () => resources.getResourcesBySourceIdAndPaths('source', any()),
+    ).thenAnswer((_) async => const Ok([]));
+
+    final viewModel = FileBrowserViewModel(
+      sourceId: 'source',
+      sourceName: '测试源',
+      filesystemRepository: filesystem,
+      resourceRepository: resources,
+      tagRepository: tags,
+      thumbnailRepository: thumbnails,
+      fileSourceFactory: sourceFactory,
+    );
+
+    await viewModel.loadDirectory('');
+    expect(viewModel.entries.map((e) => e.name), ['dir', 'a.jpg', 'b.jpg']);
+
+    await viewModel.setSort(FileBrowserSort.nameDesc);
+    expect(viewModel.entries.map((e) => e.name), ['dir', 'b.jpg', 'a.jpg']);
+
+    await viewModel.loadDirectory('dir');
+    expect(viewModel.sort, FileBrowserSort.nameAsc);
+    expect(viewModel.entries.map((e) => e.name), ['a.jpg', 'z.jpg']);
+
+    await viewModel.loadDirectory('');
+    expect(viewModel.sort, FileBrowserSort.nameDesc);
+    expect(viewModel.entries.map((e) => e.name), ['dir', 'b.jpg', 'a.jpg']);
+  });
+
   group('batchTagSelectedResources', () {
     test('批量为已入库资源打标签', () async {
       final filesystem = _MockFilesystemRepository();
@@ -169,10 +233,12 @@ void main() {
           updatedAt: DateTime(2026),
         ),
       ];
-      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
-          .thenAnswer((_) async => Ok(importedResources));
-      when(() => resources.getResourcesBySourceId('source'))
-          .thenAnswer((_) async => Ok(importedResources));
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', any()),
+      ).thenAnswer((_) async => Ok(importedResources));
+      when(
+        () => resources.getResourcesBySourceId('source'),
+      ).thenAnswer((_) async => Ok(importedResources));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));
@@ -234,10 +300,12 @@ void main() {
         createdAt: DateTime(2026),
         updatedAt: DateTime(2026),
       );
-      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
-          .thenAnswer((_) async => Ok([res1]));
-      when(() => resources.getResourcesBySourceId('source'))
-          .thenAnswer((_) async => Ok([res1]));
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', any()),
+      ).thenAnswer((_) async => Ok([res1]));
+      when(
+        () => resources.getResourcesBySourceId('source'),
+      ).thenAnswer((_) async => Ok([res1]));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));
@@ -291,10 +359,12 @@ void main() {
         createdAt: DateTime(2026),
         updatedAt: DateTime(2026),
       );
-      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
-          .thenAnswer((_) async => Ok([testResource]));
-      when(() => resources.getResourcesBySourceId('source'))
-          .thenAnswer((_) async => Ok([testResource]));
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', any()),
+      ).thenAnswer((_) async => Ok([testResource]));
+      when(
+        () => resources.getResourcesBySourceId('source'),
+      ).thenAnswer((_) async => Ok([testResource]));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));

@@ -88,6 +88,7 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
     );
   }
 }
+
 class _FileBrowserView extends StatelessWidget {
   const _FileBrowserView();
 
@@ -121,6 +122,26 @@ class _FileBrowserView extends StatelessWidget {
               onPressed: vm.enterMultiSelectMode,
               tooltip: '多选',
             ),
+            PopupMenuButton<FileBrowserSort>(
+              tooltip: '排序',
+              icon: const Icon(Icons.sort),
+              initialValue: vm.sort,
+              onSelected: vm.setSort,
+              itemBuilder: (context) => FileBrowserSort.values
+                  .map(
+                    (sort) => PopupMenuItem(
+                      value: sort,
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(_fileSortLabel(sort))),
+                          if (vm.sort == sort)
+                            const Icon(Icons.check, size: 18),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
             IconButton(
               icon: Icon(
                 vm.viewMode == ViewMode.list
@@ -141,6 +162,15 @@ class _FileBrowserView extends StatelessWidget {
           : null,
     );
   }
+
+  String _fileSortLabel(FileBrowserSort sort) => switch (sort) {
+    FileBrowserSort.nameAsc => '名称：A 到 Z',
+    FileBrowserSort.nameDesc => '名称：Z 到 A',
+    FileBrowserSort.modifiedDesc => '修改时间：新到旧',
+    FileBrowserSort.modifiedAsc => '修改时间：旧到新',
+    FileBrowserSort.sizeDesc => '大小：大到小',
+    FileBrowserSort.sizeAsc => '大小：小到大',
+  };
 
   /// 双栏布局：左树 + 右内容
   Widget _buildDualPane(BuildContext context, FileBrowserViewModel vm) {

@@ -6,6 +6,7 @@ import '../../../data/repositories/resource_repository.dart';
 import '../../../data/repositories/tag_repository.dart';
 import '../../../data/repositories/thumbnail_repository.dart';
 import '../../../domain/core/result.dart';
+import '../../../domain/models/resource_query.dart';
 import '../../../domain/use_cases/filter_resources_by_tags_use_case.dart';
 import '../../core/view_models/base_view_model.dart';
 import 'view_models/home_view_model.dart';
@@ -40,9 +41,7 @@ class _HomePageState extends State<HomePage> {
       initialTagId: widget.initialTagId,
     );
     _viewModel.addListener(_onStateChanged);
-    _viewModel.loadFirstPage();
-    _viewModel.loadInitialData();
-    _viewModel.startWatching();
+    _viewModel.initialize();
   }
 
   @override
@@ -104,7 +103,11 @@ class _HomePageState extends State<HomePage> {
       switch (result) {
         case Ok(:final value):
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已删除 ${value.deleted} 个资源${value.failed > 0 ? '，${value.failed} 个失败' : ''}')),
+            SnackBar(
+              content: Text(
+                '已删除 ${value.deleted} 个资源${value.failed > 0 ? '，${value.failed} 个失败' : ''}',
+              ),
+            ),
           );
         case Err(:final error):
           ScaffoldMessenger.of(
@@ -135,9 +138,7 @@ class _HomePageState extends State<HomePage> {
             ? <Widget>[
                 TextButton(
                   onPressed: _viewModel.toggleSelectAllVisible,
-                  child: Text(
-                    _viewModel.isAllVisibleSelected ? '取消全选' : '全选',
-                  ),
+                  child: Text(_viewModel.isAllVisibleSelected ? '取消全选' : '全选'),
                 ),
               ]
             : <Widget>[
@@ -145,6 +146,26 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.checklist),
                   tooltip: '多选',
                   onPressed: _enterMultiSelect,
+                ),
+                PopupMenuButton<ResourceSort>(
+                  tooltip: '排序',
+                  icon: const Icon(Icons.sort),
+                  initialValue: _viewModel.sort,
+                  onSelected: _viewModel.setSort,
+                  itemBuilder: (context) => ResourceSort.values
+                      .map(
+                        (sort) => PopupMenuItem(
+                          value: sort,
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(_resourceSortLabel(sort))),
+                              if (_viewModel.sort == sort)
+                                const Icon(Icons.check, size: 18),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
                 if (_isSearchActive)
                   _buildSearchCapsule(theme)
@@ -157,9 +178,18 @@ class _HomePageState extends State<HomePage> {
               ],
       ),
       body: _buildBody(),
-      bottomNavigationBar: multiSelect ? _buildMultiSelectBottomBar(theme) : null,
+      bottomNavigationBar: multiSelect
+          ? _buildMultiSelectBottomBar(theme)
+          : null,
     );
   }
+
+  String _resourceSortLabel(ResourceSort sort) => switch (sort) {
+    ResourceSort.createdDesc => '添加时间：新到旧',
+    ResourceSort.createdAsc => '添加时间：旧到新',
+    ResourceSort.nameAsc => '名称：A 到 Z',
+    ResourceSort.nameDesc => '名称：Z 到 A',
+  };
 
   Widget _buildSearchCapsule(ThemeData theme) {
     return Container(

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../../data/repositories/resource_repository.dart';
 import '../../../../data/repositories/tag_repository.dart';
 import '../../../../data/repositories/thumbnail_repository.dart';
@@ -12,6 +14,7 @@ import '../../../core/view_models/base_view_model.dart';
 
 /// 内置"收藏"标签的固定 ID
 const String favoriteTagId = '00000000-0000-0000-0000-000000000001';
+const String _kHomeResourceSortKey = 'home_resource_sort';
 
 /// 批量删除结果
 class BatchDeleteResult {
@@ -54,6 +57,7 @@ class HomeViewModel extends BaseViewModel {
   String _searchQuery = '';
   bool _favoriteOnly = false;
   bool get favoriteOnly => _favoriteOnly;
+  ResourceSort _sort = ResourceSort.createdDesc;
 
   // ---- 收藏状态 ----
 
@@ -85,6 +89,7 @@ class HomeViewModel extends BaseViewModel {
   Set<String> get favoriteResourceIds => _favoriteResourceIds;
   Set<String> get selectedTagIds => _tagIds;
   String get searchQuery => _searchQuery;
+  ResourceSort get sort => _sort;
   int? get totalCount => _totalCount;
   List<Tag> get tags => _tags;
   List<Tag> get customTags => _customTags;
@@ -114,10 +119,26 @@ class HomeViewModel extends BaseViewModel {
     searchQuery: _searchQuery,
     tagIds: _tagIds.toList(),
     favoriteOnly: _favoriteOnly,
+    sort: _sort,
     pageSize: 50,
   );
 
   // ---- 生命周期 ----
+
+  Future<void> initialize() async {
+    await _loadPersistedSort();
+    await loadFirstPage();
+    await loadInitialData();
+    startWatching();
+  }
+
+  Future<void> _loadPersistedSort() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_kHomeResourceSortKey);
+    if (index != null && index >= 0 && index < ResourceSort.values.length) {
+      _sort = ResourceSort.values[index];
+    }
+  }
 
   /// 开始监听数据库变化
   ///
@@ -260,6 +281,14 @@ class HomeViewModel extends BaseViewModel {
     _searchQuery = query;
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), _loadFirstPage);
+  }
+
+  Future<void> setSort(ResourceSort sort) async {
+    if (_sort == sort) return;
+    _sort = sort;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kHomeResourceSortKey, sort.index);
+    await _loadFirstPage();
   }
 
   // ===== 收藏状态 =====

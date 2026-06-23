@@ -12,6 +12,7 @@ import '../models/tags.dart';
 import '../models/resource_tags.dart';
 import '../models/app_config.dart';
 import '../models/enums.dart';
+import '../../domain/models/resource_query.dart';
 
 part 'database_service.g.dart';
 
@@ -82,18 +83,17 @@ class AppDatabase extends _$AppDatabase {
 
   /// 获取应用配置单例（id = 1）；缺失时兜底补建并返回默认值
   Future<AppConfigRow> getAppConfig() async {
-    final row = await (select(appConfig)
-          ..where((c) => c.id.equals(1)))
-        .getSingleOrNull();
+    final row = await (select(
+      appConfig,
+    )..where((c) => c.id.equals(1))).getSingleOrNull();
     if (row != null) return row;
     await _ensureAppConfig();
     return (select(appConfig)..where((c) => c.id.equals(1))).getSingle();
   }
 
   /// 监听应用配置变化
-  Stream<AppConfigRow> watchAppConfig() => (select(appConfig)
-        ..where((c) => c.id.equals(1)))
-      .watchSingle();
+  Stream<AppConfigRow> watchAppConfig() =>
+      (select(appConfig)..where((c) => c.id.equals(1))).watchSingle();
 
   /// 更新应用配置
   Future<void> updateAppConfig(AppConfigCompanion entry) =>
@@ -198,10 +198,9 @@ class AppDatabase extends _$AppDatabase {
     for (var start = 0; start < paths.length; start += chunkSize) {
       final end = min(start + chunkSize, paths.length);
       final chunk = paths.sublist(start, end);
-      final query = select(resources)
-        ..where(
-          (r) => r.sourceId.equals(sourceId) & r.relativePath.isIn(chunk),
-        );
+      final query = select(
+        resources,
+      )..where((r) => r.sourceId.equals(sourceId) & r.relativePath.isIn(chunk));
       result.addAll(await query.get());
     }
     return result;
@@ -365,7 +364,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// 构建筛选条件（可用源过滤 + 搜索 + 标签交集 + 收藏），供 query 和 count 共用
-  ({List<String> conditions, List<Variable<Object>> variables}) _buildFilterConditions({
+  ({List<String> conditions, List<Variable<Object>> variables})
+  _buildFilterConditions({
     String? searchQuery,
     List<String>? tagIds,
     bool favoriteOnly = false,
@@ -385,7 +385,8 @@ class AppDatabase extends _$AppDatabase {
     // 搜索（LIKE 通配符 % 和 _ 需转义避免误匹配）
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
       conditions.add(r"r.name LIKE ? ESCAPE '\'");
-      final escaped = searchQuery.trim()
+      final escaped = searchQuery
+          .trim()
           .replaceAll(r'\', r'\\')
           .replaceAll('%', r'\%')
           .replaceAll('_', r'\_');
@@ -429,7 +430,9 @@ class AppDatabase extends _$AppDatabase {
     String? searchQuery,
     List<String>? tagIds,
     bool favoriteOnly = false,
+    ResourceSort sort = ResourceSort.createdDesc,
     String? lastCreatedAt,
+    String? lastName,
     String? lastId,
     int pageSize = 50,
   }) async {
@@ -441,20 +444,60 @@ class AppDatabase extends _$AppDatabase {
 
     // 键集分页
     if (lastCreatedAt != null && lastId != null) {
-      conditions.add(
-        '(r.created_at < ? OR (r.created_at = ? AND r.id > ?))',
-      );
-      variables
-        ..add(Variable.withDateTime(DateTime.parse(lastCreatedAt)))
-        ..add(Variable.withDateTime(DateTime.parse(lastCreatedAt)))
-        ..add(Variable.withString(lastId));
+      final cursorDt = DateTime.parse(lastCreatedAt);
+      switch (sort) {
+        case ResourceSort.createdDesc:
+          conditions.add(
+            '(r.created_at < ? OR (r.created_at = ? AND r.id > ?))',
+          );
+          variables
+            ..add(Variable.withDateTime(cursorDt))
+            ..add(Variable.withDateTime(cursorDt))
+            ..add(Variable.withString(lastId));
+        case ResourceSort.createdAsc:
+          conditions.add(
+            '(r.created_at > ? OR (r.created_at = ? AND r.id > ?))',
+          );
+          variables
+            ..add(Variable.withDateTime(cursorDt))
+            ..add(Variable.withDateTime(cursorDt))
+            ..add(Variable.withString(lastId));
+        case ResourceSort.nameAsc:
+        case ResourceSort.nameDesc:
+          break;
+      }
+    } else if (lastName != null && lastId != null) {
+      switch (sort) {
+        case ResourceSort.nameAsc:
+          conditions.add('(r.name > ? OR (r.name = ? AND r.id > ?))');
+          variables
+            ..add(Variable.withString(lastName))
+            ..add(Variable.withString(lastName))
+            ..add(Variable.withString(lastId));
+        case ResourceSort.nameDesc:
+          conditions.add('(r.name < ? OR (r.name = ? AND r.id > ?))');
+          variables
+            ..add(Variable.withString(lastName))
+            ..add(Variable.withString(lastName))
+            ..add(Variable.withString(lastId));
+        case ResourceSort.createdDesc:
+        case ResourceSort.createdAsc:
+          break;
+      }
     }
 
     final where = conditions.join(' AND ');
-    final sql = '''
+    final orderBy = switch (sort) {
+      ResourceSort.createdDesc => 'r.created_at DESC, r.id ASC',
+      ResourceSort.createdAsc => 'r.created_at ASC, r.id ASC',
+      ResourceSort.nameAsc => 'r.name ASC, r.id ASC',
+      ResourceSort.nameDesc => 'r.name DESC, r.id ASC',
+    };
+    final sql =
+        '''
       SELECT r.* FROM resources AS r
       WHERE $where
-      ORDER BY r.created_at DESC, r.id ASC
+      ORDER BY $orderBy
       LIMIT ${pageSize + 1}
     ''';
 

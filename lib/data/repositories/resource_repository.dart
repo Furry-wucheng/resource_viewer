@@ -315,7 +315,9 @@ class ResourceRepository {
         searchQuery: query.searchQuery,
         tagIds: query.tagIds,
         favoriteOnly: query.favoriteOnly,
+        sort: query.sort,
         lastCreatedAt: query.cursor?.lastCreatedAt,
+        lastName: query.cursor?.lastName,
         lastId: query.cursor?.lastId,
         pageSize: query.pageSize,
       );
@@ -326,17 +328,25 @@ class ResourceRepository {
       ResourceCursor? nextCursor;
       if (hasMore && items.isNotEmpty) {
         final last = rows[query.pageSize - 1];
-        nextCursor = ResourceCursor(
-          lastCreatedAt: last.createdAt.toIso8601String(),
-          lastId: last.id,
-        );
+        nextCursor = switch (query.sort) {
+          ResourceSort.createdDesc || ResourceSort.createdAsc => ResourceCursor(
+            lastCreatedAt: last.createdAt.toIso8601String(),
+            lastId: last.id,
+          ),
+          ResourceSort.nameAsc || ResourceSort.nameDesc => ResourceCursor(
+            lastName: last.name,
+            lastId: last.id,
+          ),
+        };
       }
 
-      return Ok(PagedResult(
-        items: items,
-        nextCursor: nextCursor?.encode(),
-        hasMore: hasMore,
-      ));
+      return Ok(
+        PagedResult(
+          items: items,
+          nextCursor: nextCursor?.encode(),
+          hasMore: hasMore,
+        ),
+      );
     } catch (e) {
       return Err(DatabaseError('查询资源失败', cause: e));
     }
