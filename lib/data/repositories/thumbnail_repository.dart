@@ -15,6 +15,7 @@ import '../../shared/file_source/file_source.dart';
 import '../../shared/thumbnail/thumbnail_generator.dart';
 import '../../shared/thumbnail/image_thumbnail_generator.dart';
 import '../../shared/thumbnail/video_thumbnail_generator.dart';
+import '../../shared/thumbnail/pdf_thumbnail_generator.dart';
 import '../services/thumbnail_cache_service.dart';
 
 /// 缩略图 Repository
@@ -33,6 +34,9 @@ class ThumbnailRepository {
   final ThumbnailCacheService _cacheService;
   final ImageThumbnailGenerator _imageGenerator;
   final VideoThumbnailGenerator _videoGenerator;
+  late final PdfThumbnailGenerator _pdfGenerator = PdfThumbnailGenerator(
+    outputDirectory: _imageGenerator.outputDirectory,
+  );
 
   static const _imageExtensions = {
     '.jpg',
@@ -190,8 +194,14 @@ class ThumbnailRepository {
           );
           break;
         case ResourceType.pdf:
+          thumbPath = await _pdfGenerator.generate(
+            source,
+            relativePath,
+            resourceId,
+          );
+          break;
         case ResourceType.archive:
-          // TODO: 实现 PDF 和压缩包缩略图生成器
+          // TODO: 实现压缩包缩略图生成器
           thumbPath = null;
           break;
       }

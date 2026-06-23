@@ -80,9 +80,7 @@ abstract final class AppTheme {
               fontWeight: FontWeight.w600,
             );
           }
-          return AppTextStyles.labelSmall.copyWith(
-            color: onSurfaceVariant,
-          );
+          return AppTextStyles.labelSmall.copyWith(color: onSurfaceVariant);
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -96,7 +94,10 @@ abstract final class AppTheme {
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: colorScheme.surface,
         indicatorColor: AppColors.primaryContainer,
-        selectedIconTheme: const IconThemeData(color: AppColors.primary, size: 24),
+        selectedIconTheme: const IconThemeData(
+          color: AppColors.primary,
+          size: 24,
+        ),
         unselectedIconTheme: IconThemeData(color: onSurfaceVariant, size: 24),
         selectedLabelTextStyle: AppTextStyles.labelSmall.copyWith(
           color: AppColors.primary,
@@ -119,11 +120,7 @@ abstract final class AppTheme {
       ),
 
       // Divider
-      dividerTheme: DividerThemeData(
-        color: outline,
-        thickness: 1,
-        space: 0,
-      ),
+      dividerTheme: DividerThemeData(color: outline, thickness: 1, space: 0),
 
       // ListTile
       listTileTheme: ListTileThemeData(
@@ -156,15 +153,11 @@ abstract final class AppTheme {
         bodyMedium: AppTextStyles.bodyMedium.copyWith(
           color: colorScheme.onSurface,
         ),
-        bodySmall: AppTextStyles.bodySmall.copyWith(
-          color: onSurfaceVariant,
-        ),
+        bodySmall: AppTextStyles.bodySmall.copyWith(color: onSurfaceVariant),
         labelLarge: AppTextStyles.labelLarge.copyWith(
           color: colorScheme.onSurface,
         ),
-        labelSmall: AppTextStyles.labelSmall.copyWith(
-          color: onSurfaceVariant,
-        ),
+        labelSmall: AppTextStyles.labelSmall.copyWith(color: onSurfaceVariant),
       ),
 
       // Dialog

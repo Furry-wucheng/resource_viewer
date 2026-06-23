@@ -172,9 +172,8 @@ class _TreeNodeWidgetState extends State<_TreeNodeWidget> {
   }
 
   void _toggleExpand() {
-    final shouldLoad = !_expanded &&
-        _subdirectories.isEmpty &&
-        _hasSubdirectories;
+    final shouldLoad =
+        !_expanded && _subdirectories.isEmpty && _hasSubdirectories;
     setState(() {
       _expanded = !_expanded;
     });
@@ -220,13 +219,13 @@ class _TreeNodeWidgetState extends State<_TreeNodeWidget> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : _hasSubdirectories
-                            ? Icon(
-                                _expanded
-                                    ? Icons.keyboard_arrow_down
-                                    : Icons.keyboard_arrow_right,
-                                size: 18,
-                              )
-                            : null,
+                        ? Icon(
+                            _expanded
+                                ? Icons.keyboard_arrow_down
+                                : Icons.keyboard_arrow_right,
+                            size: 18,
+                          )
+                        : null,
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -243,8 +242,9 @@ class _TreeNodeWidgetState extends State<_TreeNodeWidget> {
                     widget.dirName,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight:
-                          _isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: _isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: _isSelected
                           ? Theme.of(context).colorScheme.primary
                           : null,

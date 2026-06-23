@@ -9,10 +9,7 @@ import 'content_provider.dart';
 ///
 /// 按文件名排序提供图片翻页，仅处理文件夹类型资源。
 class ImageFolderProvider implements ContentProvider {
-  ImageFolderProvider({
-    required this.fileSource,
-    required this.folderPath,
-  });
+  ImageFolderProvider({required this.fileSource, required this.folderPath});
 
   final FileSource fileSource;
   final String folderPath;
@@ -22,7 +19,12 @@ class ImageFolderProvider implements ContentProvider {
 
   /// 支持的图片扩展名（小写）
   static const _supportedExtensions = {
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
   };
 
   @override
@@ -72,10 +74,7 @@ class ImageFolderProvider implements ContentProvider {
     }
 
     // 自然排序
-    imagePaths.sort((a, b) => _naturalCompare(
-      p.basename(a),
-      p.basename(b),
-    ));
+    imagePaths.sort((a, b) => _naturalCompare(p.basename(a), p.basename(b)));
 
     _imagePaths = imagePaths;
   }
@@ -100,10 +99,10 @@ class ImageFolderProvider implements ContentProvider {
     final bParts = _splitNatural(b);
 
     for (var i = 0; i < aParts.length && i < bParts.length; i++) {
-      final aIsNum = aParts[i].codeUnitAt(0) >= 48 &&
-          aParts[i].codeUnitAt(0) <= 57;
-      final bIsNum = bParts[i].codeUnitAt(0) >= 48 &&
-          bParts[i].codeUnitAt(0) <= 57;
+      final aIsNum =
+          aParts[i].codeUnitAt(0) >= 48 && aParts[i].codeUnitAt(0) <= 57;
+      final bIsNum =
+          bParts[i].codeUnitAt(0) >= 48 && bParts[i].codeUnitAt(0) <= 57;
 
       if (aIsNum && bIsNum) {
         final cmp = int.parse(aParts[i]).compareTo(int.parse(bParts[i]));

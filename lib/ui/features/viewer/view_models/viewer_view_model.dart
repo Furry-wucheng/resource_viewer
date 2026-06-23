@@ -1,17 +1,32 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../../domain/models/chapter.dart';
 import '../../../../shared/content_provider/content_provider.dart';
 import '../../../../shared/content_provider/viewer_media_item.dart';
 import '../../../core/view_models/base_view_model.dart';
 
 enum ViewerState { loading, loaded, error }
 
+const _kPageDirectionKey = 'page_direction';
+const _kDoublePageModeKey = 'double_page_mode';
+
+/// 翻页方向
+enum PageDirection { rightToLeft, leftToRight }
+
+/// 双页模式
+enum DoublePageMode { auto, single, double }
+
 class ViewerViewModel extends BaseViewModel {
   ViewerViewModel({
     required this.title,
     required ContentProvider contentProvider,
     this.initialPage = 0,
+    this.chapters,
+    this.currentChapterIndex,
+    this.onNavigateChapter,
   }) : _provider = contentProvider,
        _items = List.generate(
          contentProvider.pageCount,
@@ -47,6 +62,133 @@ class ViewerViewModel extends BaseViewModel {
   final ContentProvider? _provider;
   final List<ViewerMediaItem> _items;
   Future<void> Function()? _onDispose;
+
+  // ===== 跨章节相关 =====
+
+  /// 所有章节列表
+  List<Chapter>? chapters;
+
+  /// 当前章节索引
+  int? currentChapterIndex;
+
+  /// 跨章节导航回调
+  void Function(int chapterIndex)? onNavigateChapter;
+
+  /// 获取下一章名称
+  String? getNextChapterName() {
+    final index = nextChapterIndex;
+    return index == null ? null : chapters![index].name;
+  }
+
+  /// 获取上一章名称
+  String? getPrevChapterName() {
+    if (chapters == null || currentChapterIndex == null) return null;
+    final index = prevChapterIndex;
+    return index == null ? null : chapters![index].name;
+  }
+
+  /// 是否为最后一章
+  bool get isLastChapter {
+    if (chapters == null || currentChapterIndex == null) return false;
+    return currentChapterIndex! >= chapters!.length - 1;
+  }
+
+  /// 是否为第一章
+  bool get isFirstChapter {
+    if (chapters == null || currentChapterIndex == null) return false;
+    return currentChapterIndex! <= 0;
+  }
+
+  /// 导航到下一章
+  int? get nextChapterIndex {
+    if (chapters == null || currentChapterIndex == null) return null;
+    for (var next = currentChapterIndex! + 1; next < chapters!.length; next++) {
+      if (!chapters![next].isDisabled) return next;
+    }
+    return null;
+  }
+
+  /// 导航到上一章
+  int? get prevChapterIndex {
+    if (chapters == null || currentChapterIndex == null) return null;
+    for (var prev = currentChapterIndex! - 1; prev >= 0; prev--) {
+      if (!chapters![prev].isDisabled) return prev;
+    }
+    return null;
+  }
+
+  // ===== 翻页方向 =====
+
+  PageDirection _pageDirection = PageDirection.rightToLeft;
+  PageDirection get pageDirection => _pageDirection;
+
+  /// 加载翻页方向设置
+  static Future<PageDirection> loadPageDirection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_kPageDirectionKey);
+    if (index != null && index < PageDirection.values.length) {
+      return PageDirection.values[index];
+    }
+    return PageDirection.rightToLeft;
+  }
+
+  void applyPageDirection(PageDirection direction) {
+    if (_pageDirection != direction) {
+      _pageDirection = direction;
+      notifyListeners();
+    }
+  }
+
+  void setPageDirection(PageDirection direction) {
+    _pageDirection = direction;
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setInt(_kPageDirectionKey, _pageDirection.index),
+    );
+    notifyListeners();
+  }
+
+  // ===== 双页模式 =====
+
+  DoublePageMode _doublePageMode = DoublePageMode.auto;
+  DoublePageMode get doublePageModeSetting => _doublePageMode;
+
+  /// 加载双页模式设置
+  static Future<DoublePageMode> loadDoublePageMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_kDoublePageModeKey);
+    if (index != null && index < DoublePageMode.values.length) {
+      return DoublePageMode.values[index];
+    }
+    return DoublePageMode.auto;
+  }
+
+  void applyDoublePageMode(DoublePageMode mode) {
+    if (_doublePageMode != mode) {
+      _doublePageMode = mode;
+      notifyListeners();
+    }
+  }
+
+  void setDoublePageMode(DoublePageMode mode) {
+    _doublePageMode = mode;
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setInt(_kDoublePageModeKey, _doublePageMode.index),
+    );
+    notifyListeners();
+  }
+
+  /// 当前是否处于双页模式（由 ViewerPage 根据宽度和设置判断）
+  bool _isCurrentlyDoublePage = false;
+  bool get isCurrentlyDoublePage => _isCurrentlyDoublePage;
+
+  void setCurrentlyDoublePage(bool value) {
+    if (_isCurrentlyDoublePage != value) {
+      _isCurrentlyDoublePage = value;
+      notifyListeners();
+    }
+  }
+
+  // ===== 基础状态 =====
 
   ViewerState _state = ViewerState.loading;
   ViewerState get viewerState => _state;

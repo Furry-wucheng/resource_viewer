@@ -102,7 +102,11 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         children: [
           const SizedBox(width: 10),
-          Icon(Icons.search, size: 18, color: theme.colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.search,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
           Expanded(
             child: TextField(

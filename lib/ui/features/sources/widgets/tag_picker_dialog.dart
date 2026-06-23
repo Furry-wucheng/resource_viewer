@@ -11,10 +11,7 @@ import '../../../../domain/models/tag.dart';
 /// 显示所有标签列表，支持勾选/取消勾选，支持创建新标签。
 /// 返回最终选中的标签 ID 列表。
 class TagPickerDialog extends StatefulWidget {
-  const TagPickerDialog({
-    super.key,
-    required this.selectedTagIds,
-  });
+  const TagPickerDialog({super.key, required this.selectedTagIds});
 
   final Set<String> selectedTagIds;
 
@@ -102,9 +99,9 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
           _nameController.clear();
         });
       case Err(:final error):
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -158,8 +155,11 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
                           child: CircleAvatar(
                             radius: 14,
                             backgroundColor: _parseColor(_newTagColor),
-                            child: const Icon(Icons.palette,
-                                size: 16, color: Colors.white),
+                            child: const Icon(
+                              Icons.palette,
+                              size: 16,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -195,8 +195,7 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
                     ),
                   ] else ...[
                     TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _showCreateForm = true),
+                      onPressed: () => setState(() => _showCreateForm = true),
                       icon: const Icon(Icons.add),
                       label: const Text('创建新标签'),
                     ),
@@ -219,10 +218,22 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
 
   void _showColorPicker() {
     final colors = [
-      '#F44336', '#E91E63', '#9C27B0', '#673AB7',
-      '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4',
-      '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
-      '#FFC107', '#FF9800', '#FF5722', '#795548',
+      '#F44336',
+      '#E91E63',
+      '#9C27B0',
+      '#673AB7',
+      '#3F51B5',
+      '#2196F3',
+      '#03A9F4',
+      '#00BCD4',
+      '#009688',
+      '#4CAF50',
+      '#8BC34A',
+      '#CDDC39',
+      '#FFC107',
+      '#FF9800',
+      '#FF5722',
+      '#795548',
     ];
 
     showDialog(

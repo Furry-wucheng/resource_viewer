@@ -56,10 +56,7 @@ class SourceCard extends StatelessWidget {
             // 状态指示
             _buildStatusIndicator(theme, isEnabled, isAvailable),
             // 启用/禁用开关
-            Switch(
-              value: isEnabled,
-              onChanged: onToggle,
-            ),
+            Switch(value: isEnabled, onChanged: onToggle),
             // 更多菜单
             PopupMenuButton<String>(
               onSelected: (value) {
@@ -82,7 +79,8 @@ class SourceCard extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
-                if (source.type == SourceType.smb && onEditSmbCredentials != null)
+                if (source.type == SourceType.smb &&
+                    onEditSmbCredentials != null)
                   const PopupMenuItem(
                     value: 'edit_smb',
                     child: ListTile(
@@ -123,10 +121,7 @@ class SourceCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          Text(
-            '扫描中...',
-            style: theme.textTheme.bodySmall,
-          ),
+          Text('扫描中...', style: theme.textTheme.bodySmall),
         ],
       );
     }
@@ -155,7 +150,11 @@ class SourceCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIndicator(ThemeData theme, bool isEnabled, bool isAvailable) {
+  Widget _buildStatusIndicator(
+    ThemeData theme,
+    bool isEnabled,
+    bool isAvailable,
+  ) {
     if (isScanning) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
@@ -230,9 +229,9 @@ class SourceCard extends StatelessWidget {
 /// Source 扩展
 extension _SourceLabel on Source {
   String get typeLabel => switch (type) {
-        SourceType.local => '本地',
-        SourceType.smb => 'SMB',
-        SourceType.ftp => 'FTP',
-        SourceType.webdav => 'WebDAV',
-      };
+    SourceType.local => '本地',
+    SourceType.smb => 'SMB',
+    SourceType.ftp => 'FTP',
+    SourceType.webdav => 'WebDAV',
+  };
 }

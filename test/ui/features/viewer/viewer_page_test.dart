@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:resource_viewer/shared/content_provider/content_provider.dart';
@@ -368,6 +369,7 @@ void main() {
     late MockContentProvider mockProvider;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({});
       mockProvider = MockContentProvider();
       when(() => mockProvider.pageCount).thenReturn(3);
       when(
@@ -429,14 +431,15 @@ void main() {
       final size = tester.getSize(
         find.byKey(const ValueKey('viewer-interaction-layer')),
       );
-      await tester.tapAt(Offset(size.width * 0.9, size.height * 0.5));
+      await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(find.text('2 / 3'), findsOneWidget);
       expect(find.byType(ViewerToolbar), findsOneWidget);
 
-      await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
-      await tester.pump(const Duration(milliseconds: 350));
+      await tester.tapAt(Offset(size.width * 0.9, size.height * 0.5));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 80));
       await tester.pumpAndSettle();
       expect(find.text('1 / 3'), findsOneWidget);
 
@@ -458,7 +461,7 @@ void main() {
       expect(find.byType(ViewerToolbar), findsOneWidget);
     });
 
-    testWidgets('左滑下一页', (tester) async {
+    testWidgets('默认 RTL 右滑下一页', (tester) async {
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
 
@@ -471,10 +474,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ViewerToolbar), findsNothing);
 
-      // 左滑 → 下一页
+      // 默认 RTL：向右拖动，当前图向右移动 → 下一页
       await tester.fling(
-        find.byType(Center).first,
-        const Offset(-300, 0),
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(300, 0),
         1000,
       );
       await tester.pumpAndSettle();
@@ -489,6 +492,7 @@ void main() {
     });
 
     testWidgets('资源库翻页使用跟手 PageView 动画', (tester) async {
+      SharedPreferences.setMockInitialValues({'page_direction': 1});
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
 
@@ -509,7 +513,102 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('右滑上一页', (tester) async {
+    testWidgets('翻页方向同时控制手势轴和动画轴', (tester) async {
+      await tester.pumpWidget(buildViewer());
+      await tester.pumpAndSettle();
+      var pageView = tester.widget<PageView>(
+        find.byKey(const ValueKey('viewer-page-view')),
+      );
+      expect(pageView.reverse, isFalse);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      SharedPreferences.setMockInitialValues({'page_direction': 1});
+      await tester.pumpWidget(buildViewer());
+      await tester.pumpAndSettle();
+      pageView = tester.widget<PageView>(
+        find.byKey(const ValueKey('viewer-page-view')),
+      );
+      expect(pageView.reverse, isFalse, reason: '物理动画轴不随阅读模式反转');
+      final controller = pageView.controller!;
+      expect(controller.page, 0);
+      await tester.fling(
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(-300, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2 / 3'), findsOneWidget);
+
+      await tester.fling(
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(300, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 / 3'), findsOneWidget);
+    });
+
+    testWidgets('宽屏双页模式按首页单页后每次两页显示', (tester) async {
+      when(() => mockProvider.pageCount).thenReturn(5);
+      SharedPreferences.setMockInitialValues({'double_page_mode': 2});
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1200, 800);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(buildViewer());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('viewer-double-page-view')),
+        findsOneWidget,
+      );
+      expect(find.text('1 / 5'), findsOneWidget);
+
+      await tester.fling(
+        find.byKey(const ValueKey('viewer-double-page-view')),
+        const Offset(400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2 / 5'), findsOneWidget);
+
+      final size = tester.getSize(
+        find.byKey(const ValueKey('viewer-interaction-layer')),
+      );
+      await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('4 / 5'), findsOneWidget);
+    });
+
+    testWidgets('双页模式无法配对的末页居中单独显示', (tester) async {
+      when(() => mockProvider.pageCount).thenReturn(4);
+      SharedPreferences.setMockInitialValues({'double_page_mode': 2});
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1200, 800);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(buildViewer());
+      await tester.pumpAndSettle();
+      final size = tester.getSize(
+        find.byKey(const ValueKey('viewer-interaction-layer')),
+      );
+      for (var i = 0; i < 2; i++) {
+        await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.text('4 / 4'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('viewer-singleton-spread-3')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('默认 RTL 左滑上一页', (tester) async {
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
 
@@ -518,16 +617,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
-      // 跳到第 2 页
+      // 默认 RTL：右滑到第 2 页
       await tester.fling(
-        find.byType(Center).first,
-        const Offset(-300, 0),
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(300, 0),
         1000,
       );
       await tester.pumpAndSettle();
 
-      // 右滑 → 上一页
-      await tester.fling(find.byType(Center).first, const Offset(300, 0), 1000);
+      // 左滑 → 上一页
+      await tester.fling(
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(-300, 0),
+        1000,
+      );
       await tester.pumpAndSettle();
 
       // 显示工具栏查看页码
@@ -544,11 +647,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // 找到滑动条
-      final slider = find.byType(Slider);
+      final slider = find.byType(SlideBar);
       expect(slider, findsOneWidget);
 
       // 拖动滑动条到右侧（足够大的距离）
-      await tester.drag(slider, const Offset(500, 0));
+      await tester.drag(slider, const Offset(-500, 0));
       await tester.pumpAndSettle();
 
       // 应跳转到最后一页
@@ -574,10 +677,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
-      // 跳到第 2 页（左滑）
+      // 默认 RTL：右滑到第 2 页
       await tester.fling(
-        find.byType(Center).first,
-        const Offset(-300, 0),
+        find.byKey(const ValueKey('viewer-page-view')),
+        const Offset(300, 0),
         1000,
       );
       await tester.pumpAndSettle();

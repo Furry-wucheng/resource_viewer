@@ -68,6 +68,16 @@ class _ViewerPageState extends State<ViewerPage> {
   DateTime? _lastTapTime;
   Timer? _singleTapTimer;
 
+  // 跨章节提示
+  Timer? _chapterHintTimer;
+  String? _chapterHintText;
+  bool _showChapterHint = false;
+
+  // 窗口宽度（用于双页判断）
+  double _windowWidth = 0;
+  bool _lastDoublePage = false;
+  PageDirection? _lastPageDirection;
+
   @override
   void initState() {
     super.initState();
@@ -85,14 +95,24 @@ class _ViewerPageState extends State<ViewerPage> {
           );
     _pageController = PageController(initialPage: widget.initialPage);
     _viewModel.init();
+    _loadViewerSettings();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
   }
 
+  Future<void> _loadViewerSettings() async {
+    final direction = await ViewerViewModel.loadPageDirection();
+    final doubleMode = await ViewerViewModel.loadDoublePageMode();
+    if (!mounted) return;
+    _viewModel.applyPageDirection(direction);
+    _viewModel.applyDoublePageMode(doubleMode);
+  }
+
   @override
   void dispose() {
     _singleTapTimer?.cancel();
+    _chapterHintTimer?.cancel();
     _pageController.dispose();
     _focusNode.dispose();
     for (final controller in _transformControllers.values) {
@@ -106,26 +126,56 @@ class _ViewerPageState extends State<ViewerPage> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: KeyboardListener(
-        focusNode: _focusNode,
-        onKeyEvent: _handleKeyEvent,
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          body: Consumer<ViewerViewModel>(
-            builder: (context, vm, _) => switch (vm.viewerState) {
-              ViewerState.loading => const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+      child: Consumer<ViewerViewModel>(
+        builder: (context, vm, _) => LayoutBuilder(
+          builder: (context, constraints) {
+            _windowWidth = constraints.maxWidth;
+            // 双页模式判断
+            final setting = vm.doublePageModeSetting;
+            final isDoublePage =
+                setting == DoublePageMode.double ||
+                (setting == DoublePageMode.auto && _windowWidth >= 900);
+            final canSyncViewport =
+                vm.viewerState == ViewerState.loaded && vm.totalPages > 0;
+            if (canSyncViewport &&
+                (_lastDoublePage != isDoublePage ||
+                    _lastPageDirection != vm.pageDirection)) {
+              _lastDoublePage = isDoublePage;
+              _lastPageDirection = vm.pageDirection;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _pageController.hasClients) {
+                  _pageController.jumpToPage(
+                    _visualPositionForPage(vm.currentPage, vm, isDoublePage),
+                  );
+                }
+              });
+            }
+
+            return KeyboardListener(
+              focusNode: _focusNode,
+              onKeyEvent: _handleKeyEvent,
+              child: Scaffold(
+                backgroundColor: Colors.black,
+                body: switch (vm.viewerState) {
+                  ViewerState.loading => const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                  ViewerState.error => _buildErrorView(vm),
+                  ViewerState.loaded => _buildViewer(context, vm, isDoublePage),
+                },
               ),
-              ViewerState.error => _buildErrorView(vm),
-              ViewerState.loaded => _buildViewer(context, vm),
-            },
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildViewer(BuildContext context, ViewerViewModel vm) {
+  Widget _buildViewer(
+    BuildContext context,
+    ViewerViewModel vm,
+    bool isDoublePage,
+  ) {
     final isVideo = vm.currentItem.type == ViewerMediaType.video;
     return Stack(
       children: [
@@ -139,14 +189,30 @@ class _ViewerPageState extends State<ViewerPage> {
             },
             onPointerUp: (event) => _handlePointerUp(context, vm, event),
             child: PageView.builder(
-              key: const ValueKey('viewer-page-view'),
+              key: isDoublePage
+                  ? const ValueKey('viewer-double-page-view')
+                  : const ValueKey('viewer-page-view'),
               controller: _pageController,
-              itemCount: vm.totalPages,
-              onPageChanged: (page) {
+              // PageView keeps a stable physical axis: increasing visual
+              // positions move content left, decreasing positions move it
+              // right. Reading direction is represented by the
+              // visual-position-to-page mapping below.
+              reverse: false,
+              itemCount: isDoublePage ? 1 + vm.totalPages ~/ 2 : vm.totalPages,
+              onPageChanged: (position) {
                 _resetZoom();
-                vm.goToPage(page);
+                vm.goToPage(_pageForVisualPosition(position, vm, isDoublePage));
               },
-              itemBuilder: (context, index) => _buildMediaPage(vm, index),
+              itemBuilder: (context, position) {
+                final logicalPosition = _logicalPositionForVisual(
+                  position,
+                  vm,
+                  isDoublePage,
+                );
+                return isDoublePage
+                    ? _buildDoublePageSpread(vm, logicalPosition)
+                    : _buildMediaPage(vm, logicalPosition);
+              },
             ),
           ),
         ),
@@ -162,6 +228,10 @@ class _ViewerPageState extends State<ViewerPage> {
               onBack: () => Navigator.of(context).pop(),
               isFavorited: widget.isFavorited,
               onFavoriteTap: widget.onFavoriteTap,
+              pageDirection: vm.pageDirection,
+              doublePageMode: vm.doublePageModeSetting,
+              onPageDirectionChanged: vm.setPageDirection,
+              onDoublePageModeChanged: vm.setDoublePageMode,
             ),
           ),
         if (vm.isToolbarVisible && !isVideo && vm.totalPages > 1)
@@ -173,13 +243,42 @@ class _ViewerPageState extends State<ViewerPage> {
               currentPage: vm.currentPage,
               totalPages: vm.totalPages,
               onChanged: _animateToPage,
+              isRtl: vm.pageDirection == PageDirection.rightToLeft,
+            ),
+          ),
+        // 跨章节提示
+        if (_showChapterHint && _chapterHintText != null)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 60,
+            left: 16,
+            right: 16,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _chapterHintText!,
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildMediaPage(ViewerViewModel vm, int index) {
+  Widget _buildMediaPage(
+    ViewerViewModel vm,
+    int index, {
+    Alignment imageAlignment = Alignment.center,
+  }) {
     final item = vm.itemAt(index);
     if (item.type == ViewerMediaType.video) {
       return VideoPlayerWidget(
@@ -196,7 +295,9 @@ class _ViewerPageState extends State<ViewerPage> {
     }
 
     final ready = _readyImages[index];
-    if (ready != null) return _imageView(vm, index, ready);
+    if (ready != null) {
+      return _imageView(vm, index, ready, alignment: imageAlignment);
+    }
     final cachedBytes = vm.cachedPageContent(index);
     if (cachedBytes != null) {
       final image = MemoryImage(cachedBytes);
@@ -204,13 +305,15 @@ class _ViewerPageState extends State<ViewerPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(precacheImage(image, context));
       });
-      return _imageView(vm, index, image);
+      return _imageView(vm, index, image, alignment: imageAlignment);
     }
     return FutureBuilder<MemoryImage?>(
       future: _imageFutures.putIfAbsent(index, () => _loadImage(vm, index)),
       builder: (context, snapshot) {
         final image = snapshot.data;
-        if (image != null) return _imageView(vm, index, image);
+        if (image != null) {
+          return _imageView(vm, index, image, alignment: imageAlignment);
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
             child: CircularProgressIndicator(color: Colors.white),
@@ -221,6 +324,44 @@ class _ViewerPageState extends State<ViewerPage> {
     );
   }
 
+  Widget _buildDoublePageSpread(ViewerViewModel vm, int spread) {
+    final first = _firstPageForSpread(spread);
+    if (spread == 0) {
+      return _buildMediaPage(vm, first);
+    }
+    final second = first + 1;
+    if (second >= vm.totalPages) {
+      return KeyedSubtree(
+        key: ValueKey('viewer-singleton-spread-$first'),
+        child: _buildMediaPage(vm, first),
+      );
+    }
+    final pages = vm.pageDirection == PageDirection.rightToLeft
+        ? <int?>[second, first]
+        : <int?>[first, second];
+    return Row(
+      children: pages.indexed
+          .map(
+            (entry) => Expanded(
+              child: entry.$2 == null
+                  ? const SizedBox()
+                  : _buildMediaPage(
+                      vm,
+                      entry.$2!,
+                      imageAlignment: entry.$1 == 0
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                    ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  int _firstPageForSpread(int spread) => spread == 0 ? 0 : 1 + (spread - 1) * 2;
+
+  int _spreadForPage(int page) => page == 0 ? 0 : 1 + (page - 1) ~/ 2;
+
   Future<MemoryImage?> _loadImage(ViewerViewModel vm, int index) async {
     final bytes = await vm.getPageContent(index);
     if (bytes == null || !mounted) return null;
@@ -230,7 +371,12 @@ class _ViewerPageState extends State<ViewerPage> {
     return image;
   }
 
-  Widget _imageView(ViewerViewModel vm, int index, MemoryImage image) {
+  Widget _imageView(
+    ViewerViewModel vm,
+    int index,
+    MemoryImage image, {
+    Alignment alignment = Alignment.center,
+  }) {
     return InteractiveViewer(
       transformationController: _transformControllers.putIfAbsent(
         index,
@@ -238,7 +384,8 @@ class _ViewerPageState extends State<ViewerPage> {
       ),
       minScale: 0.5,
       maxScale: 5,
-      child: Center(
+      child: Align(
+        alignment: alignment,
         child: Image(
           image: image,
           fit: BoxFit.contain,
@@ -299,16 +446,66 @@ class _ViewerPageState extends State<ViewerPage> {
 
   void _handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return;
+    final isLtr = _viewModel.pageDirection == PageDirection.leftToRight;
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      _animateToPage(_viewModel.currentPage - 1);
+      // LTR时左键=上一页，RTL时左键=下一页
+      if (isLtr) {
+        _goPrevious(_viewModel);
+      } else {
+        _goNext(_viewModel);
+      }
     } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      _animateToPage(_viewModel.currentPage + 1);
+      // LTR时右键=下一页，RTL时右键=上一页
+      if (isLtr) {
+        _goNext(_viewModel);
+      } else {
+        _goPrevious(_viewModel);
+      }
     } else if (event.logicalKey == LogicalKeyboardKey.escape) {
       Navigator.of(context).pop();
     } else if (event.logicalKey == LogicalKeyboardKey.space &&
         _viewModel.currentItem.type == ViewerMediaType.video) {
       _videoControllers[_viewModel.currentPage]?.playOrPause();
     }
+  }
+
+  /// 尝试跨章节跳转（在章节边界点击翻页时触发）
+  void _tryCrossChapter(ViewerViewModel vm, {required bool isPrev}) {
+    final chapterName = isPrev
+        ? vm.getPrevChapterName()
+        : vm.getNextChapterName();
+
+    if (chapterName == null) {
+      // 没有更多章节
+      _displayChapterHint(isPrev ? '已是第一章' : '已是最后一章');
+      return;
+    }
+
+    // 显示提示
+    _displayChapterHint('${isPrev ? "上一章" : "下一章"}: $chapterName');
+
+    // 触发导航
+    final targetIndex = isPrev ? vm.prevChapterIndex : vm.nextChapterIndex;
+    if (targetIndex != null && vm.onNavigateChapter != null) {
+      vm.onNavigateChapter!(targetIndex);
+    }
+  }
+
+  /// 显示跨章节提示
+  void _displayChapterHint(String text) {
+    _chapterHintTimer?.cancel();
+    setState(() {
+      _chapterHintText = text;
+      _showChapterHint = true;
+    });
+    _chapterHintTimer = Timer(
+      const Duration(seconds: 1, milliseconds: 500),
+      () {
+        if (mounted) {
+          setState(() => _showChapterHint = false);
+        }
+      },
+    );
   }
 
   void _handlePointerUp(
@@ -324,6 +521,18 @@ class _ViewerPageState extends State<ViewerPage> {
     if (vm.currentItem.type == ViewerMediaType.video) return;
     final delta = event.position - start;
     final duration = DateTime.now().difference(startedAt);
+    if (delta.dx.abs() >= 30) {
+      final isLtr = vm.pageDirection == PageDirection.leftToRight;
+      final swipedTowardNext = isLtr ? delta.dx < 0 : delta.dx > 0;
+      final atStart = _previousPage(vm) == null;
+      final atEnd = _nextPage(vm) == null;
+      if (swipedTowardNext && atEnd) {
+        _tryCrossChapter(vm, isPrev: false);
+      } else if (!swipedTowardNext && atStart) {
+        _tryCrossChapter(vm, isPrev: true);
+      }
+      return;
+    }
     if (delta.distance >= 10 || duration >= const Duration(milliseconds: 300)) {
       return;
     }
@@ -348,10 +557,26 @@ class _ViewerPageState extends State<ViewerPage> {
     _singleTapTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       final width = MediaQuery.sizeOf(context).width;
+      // 操作随阅读方向：LTR时右=下一页，RTL时左=下一页
+      final isLtr = vm.pageDirection == PageDirection.leftToRight;
       if (event.position.dx < width * 0.25) {
-        _animateToPage(vm.currentPage - 1);
+        // 左侧
+        if (isLtr) {
+          // LTR: 左侧=上一页
+          _goPrevious(vm);
+        } else {
+          // RTL: 左侧=下一页
+          _goNext(vm);
+        }
       } else if (event.position.dx > width * 0.75) {
-        _animateToPage(vm.currentPage + 1);
+        // 右侧
+        if (isLtr) {
+          // LTR: 右侧=下一页
+          _goNext(vm);
+        } else {
+          // RTL: 右侧=上一页
+          _goPrevious(vm);
+        }
       } else {
         vm.toggleToolbar();
       }
@@ -368,10 +593,97 @@ class _ViewerPageState extends State<ViewerPage> {
     }
     _resetZoom();
     _pageController.animateToPage(
-      page,
+      _visualPositionForPage(page, _viewModel, _lastDoublePage),
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
     );
+  }
+
+  int _positionCount(ViewerViewModel vm, bool isDoublePage) =>
+      isDoublePage ? 1 + vm.totalPages ~/ 2 : vm.totalPages;
+
+  int _logicalPositionForVisual(
+    int visualPosition,
+    ViewerViewModel vm,
+    bool isDoublePage,
+  ) {
+    if (vm.pageDirection == PageDirection.leftToRight) return visualPosition;
+    return _positionCount(vm, isDoublePage) - 1 - visualPosition;
+  }
+
+  int _visualPositionForLogical(
+    int logicalPosition,
+    ViewerViewModel vm,
+    bool isDoublePage,
+  ) {
+    if (vm.pageDirection == PageDirection.leftToRight) return logicalPosition;
+    return _positionCount(vm, isDoublePage) - 1 - logicalPosition;
+  }
+
+  int _visualPositionForPage(int page, ViewerViewModel vm, bool isDoublePage) {
+    final logicalPosition = isDoublePage ? _spreadForPage(page) : page;
+    return _visualPositionForLogical(logicalPosition, vm, isDoublePage);
+  }
+
+  int _pageForVisualPosition(
+    int visualPosition,
+    ViewerViewModel vm,
+    bool isDoublePage,
+  ) {
+    final logicalPosition = _logicalPositionForVisual(
+      visualPosition,
+      vm,
+      isDoublePage,
+    );
+    return isDoublePage
+        ? _firstPageForSpread(logicalPosition)
+        : logicalPosition;
+  }
+
+  int? _nextPage(ViewerViewModel vm) {
+    final currentPage = _logicalPageAtViewport(vm);
+    if (!_lastDoublePage) {
+      final next = currentPage + 1;
+      return next < vm.totalPages ? next : null;
+    }
+    final nextSpread = _spreadForPage(currentPage) + 1;
+    final next = _firstPageForSpread(nextSpread);
+    return next < vm.totalPages ? next : null;
+  }
+
+  int? _previousPage(ViewerViewModel vm) {
+    final currentPage = _logicalPageAtViewport(vm);
+    if (!_lastDoublePage) {
+      final previous = currentPage - 1;
+      return previous >= 0 ? previous : null;
+    }
+    final previousSpread = _spreadForPage(currentPage) - 1;
+    return previousSpread >= 0 ? _firstPageForSpread(previousSpread) : null;
+  }
+
+  int _logicalPageAtViewport(ViewerViewModel vm) {
+    if (!_pageController.hasClients) return vm.currentPage;
+    final visualPosition = _pageController.page?.round();
+    if (visualPosition == null) return vm.currentPage;
+    return _pageForVisualPosition(visualPosition, vm, _lastDoublePage);
+  }
+
+  void _goNext(ViewerViewModel vm) {
+    final page = _nextPage(vm);
+    if (page == null) {
+      _tryCrossChapter(vm, isPrev: false);
+    } else {
+      _animateToPage(page);
+    }
+  }
+
+  void _goPrevious(ViewerViewModel vm) {
+    final page = _previousPage(vm);
+    if (page == null) {
+      _tryCrossChapter(vm, isPrev: true);
+    } else {
+      _animateToPage(page);
+    }
   }
 
   void _handleDoubleTap(Offset position) {

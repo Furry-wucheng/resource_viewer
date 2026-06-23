@@ -16,6 +16,7 @@ class ResourceGridItem extends StatelessWidget {
     this.onTap,
     this.isFavorited = false,
     this.onFavoriteTap,
+    this.onLongPress,
   });
 
   final Resource resource;
@@ -28,12 +29,16 @@ class ResourceGridItem extends StatelessWidget {
   /// 收藏按钮点击回调
   final VoidCallback? onFavoriteTap;
 
+  /// 长按回调
+  final VoidCallback? onLongPress;
+
   @override
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -57,10 +62,7 @@ class ResourceGridItem extends StatelessWidget {
                   resource.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -134,16 +136,15 @@ class ResourceGridItem extends StatelessWidget {
         isFavorited ? Icons.star : Icons.star_border,
         color: isFavorited ? AppColors.star : Colors.white,
         size: 22,
-        shadows: const [
-          Shadow(color: Colors.black54, blurRadius: 4),
-        ],
+        shadows: const [Shadow(color: Colors.black54, blurRadius: 4)],
       ),
     );
   }
 
   bool get _showsTypeBadge =>
       resource.type == ResourceType.pdf ||
-      resource.type == ResourceType.archive;
+      resource.type == ResourceType.archive ||
+      resource.type == ResourceType.video;
 
   IconData get _typeIcon {
     return switch (resource.type) {

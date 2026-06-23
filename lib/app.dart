@@ -9,6 +9,7 @@ import 'data/repositories/resource_repository.dart';
 import 'data/repositories/tag_repository.dart';
 import 'data/repositories/filesystem_repository.dart';
 import 'data/repositories/thumbnail_repository.dart';
+import 'data/repositories/organization_repository.dart';
 import 'shared/file_source/file_source_factory.dart';
 import 'ui/core/router.dart';
 import 'ui/core/theme/app_theme.dart';
@@ -57,6 +58,7 @@ class ResourceViewerApp extends StatelessWidget {
         ),
         Provider(create: (ctx) => ResourceRepository(ctx.read<AppDatabase>())),
         Provider(create: (ctx) => TagRepository(ctx.read<AppDatabase>())),
+        Provider(create: (_) => OrganizationRepository()),
         Provider(
           create: (ctx) =>
               ThumbnailRepository(ctx.read<ThumbnailCacheService>()),

@@ -27,11 +27,10 @@ class FileSourceFactory {
 
     final fileSource = switch (source.type) {
       SourceType.local => LocalFileSource(
-          sourceId: source.id,
-          rootPath: source.rootPath,
-        ),
-      SourceType.smb => throw UnimplementedError(
-          '请使用 createAsync() 创建 SMB 源'),
+        sourceId: source.id,
+        rootPath: source.rootPath,
+      ),
+      SourceType.smb => throw UnimplementedError('请使用 createAsync() 创建 SMB 源'),
       SourceType.ftp => throw UnimplementedError('FTP 源尚未实现'),
       SourceType.webdav => throw UnimplementedError('WebDAV 源尚未实现'),
     };

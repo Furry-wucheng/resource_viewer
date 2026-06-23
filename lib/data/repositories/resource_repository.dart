@@ -218,6 +218,41 @@ class ResourceRepository {
     }
   }
 
+  /// Atomically creates split children and optionally removes the original.
+  Future<Result<void>> commitResourceSplit({
+    required List<domain.Resource> children,
+    required String originalId,
+    required bool deleteOriginal,
+  }) async {
+    try {
+      await _db.transaction(() async {
+        for (final child in children) {
+          await _db.createResource(
+            ResourcesCompanion(
+              id: Value(child.id),
+              sourceId: Value(child.sourceId),
+              name: Value(child.name),
+              type: Value(_toDriftResourceType(child.type)),
+              relativePath: Value(child.relativePath),
+              organizationMode: Value(
+                child.organizationMode == null
+                    ? null
+                    : _toDriftOrganizationMode(child.organizationMode!),
+              ),
+            ),
+          );
+        }
+        if (deleteOriginal) {
+          final deleted = await _db.deleteResource(originalId);
+          if (deleted != 1) throw StateError('原资源不存在');
+        }
+      });
+      return const Ok(null);
+    } catch (e) {
+      return Err(DatabaseError('拆分资源失败', cause: e));
+    }
+  }
+
   /// 键集分页查询资源
   Future<Result<List<domain.Resource>>> pageResources({
     String? lastCreatedAt,

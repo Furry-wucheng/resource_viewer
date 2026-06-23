@@ -10,10 +10,7 @@ import 'file_source.dart';
 ///
 /// 使用 `dart:io` 访问本地文件系统。
 class LocalFileSource implements FileSource {
-  LocalFileSource({
-    required this.sourceId,
-    required this.rootPath,
-  });
+  LocalFileSource({required this.sourceId, required this.rootPath});
 
   @override
   final String sourceId;
@@ -61,13 +58,15 @@ class LocalFileSource implements FileSource {
         // stat 失败不影响列表
       }
 
-      entries.add(FileEntry(
-        name: name,
-        path: _toRelative(entity.path),
-        isDirectory: isDirectory,
-        size: size,
-        modifiedAt: modifiedAt,
-      ));
+      entries.add(
+        FileEntry(
+          name: name,
+          path: _toRelative(entity.path),
+          isDirectory: isDirectory,
+          size: size,
+          modifiedAt: modifiedAt,
+        ),
+      );
     }
 
     // 文件夹在前，文件在后，按名称字母升序
@@ -174,10 +173,10 @@ class LocalFileSource implements FileSource {
     final bParts = _splitNatural(b);
 
     for (var i = 0; i < aParts.length && i < bParts.length; i++) {
-      final aIsNum = aParts[i].codeUnitAt(0) >= 48 &&
-          aParts[i].codeUnitAt(0) <= 57;
-      final bIsNum = bParts[i].codeUnitAt(0) >= 48 &&
-          bParts[i].codeUnitAt(0) <= 57;
+      final aIsNum =
+          aParts[i].codeUnitAt(0) >= 48 && aParts[i].codeUnitAt(0) <= 57;
+      final bIsNum =
+          bParts[i].codeUnitAt(0) >= 48 && bParts[i].codeUnitAt(0) <= 57;
 
       if (aIsNum && bIsNum) {
         final cmp = int.parse(aParts[i]).compareTo(int.parse(bParts[i]));

@@ -206,6 +206,13 @@ class _FileGridItem extends StatelessWidget {
                   ),
                 ),
               ),
+            // 文件类型角标（非文件夹文件）
+            if (!entry.isDirectory)
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: _buildFileTypeBadge(entry.name),
+              ),
             // 已入库角标
             if (isImported)
               Positioned(
@@ -257,6 +264,39 @@ class _FileGridItem extends StatelessWidget {
   }
 
   /// 构建文件图标
+  static Widget _buildFileTypeBadge(String fileName) {
+    final ext = fileName.toLowerCase();
+    IconData icon;
+    Color color;
+    if (ext.endsWith('.pdf')) {
+      icon = Icons.picture_as_pdf;
+      color = Colors.red;
+    } else if (ext.endsWith('.mp4') ||
+        ext.endsWith('.mkv') ||
+        ext.endsWith('.mov') ||
+        ext.endsWith('.avi') ||
+        ext.endsWith('.wmv') ||
+        ext.endsWith('.webm')) {
+      icon = Icons.movie;
+      color = Colors.blue;
+    } else if (ext.endsWith('.zip') ||
+        ext.endsWith('.rar') ||
+        ext.endsWith('.7z')) {
+      icon = Icons.archive;
+      color = Colors.orange;
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Icon(icon, size: 14, color: color),
+    );
+  }
+
   Widget _buildPreview(ThemeData theme) {
     final loader = thumbnailLoader;
     if (loader == null) return _buildIcon(theme);
