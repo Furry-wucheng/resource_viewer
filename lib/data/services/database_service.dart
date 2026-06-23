@@ -367,6 +367,37 @@ class AppDatabase extends _$AppDatabase {
     return query.map((row) => row.readTable(tags)).get();
   }
 
+  /// 批量获取多个资源的标签
+  Future<Map<String, List<Tag>>> getTagsForResources(
+    List<String> resourceIds,
+  ) async {
+    if (resourceIds.isEmpty) return {};
+
+    final result = <String, List<Tag>>{
+      for (final resourceId in resourceIds) resourceId: [],
+    };
+    final uniqueIds = resourceIds.toSet().toList();
+    const chunkSize = 500;
+
+    for (var start = 0; start < uniqueIds.length; start += chunkSize) {
+      final end = start + chunkSize > uniqueIds.length
+          ? uniqueIds.length
+          : start + chunkSize;
+      final query = select(tags).join([
+        innerJoin(resourceTags, resourceTags.tagId.equalsExp(tags.id)),
+      ])..where(resourceTags.resourceId.isIn(uniqueIds.sublist(start, end)));
+
+      final rows = await query.get();
+      for (final row in rows) {
+        final relation = row.readTable(resourceTags);
+        result
+            .putIfAbsent(relation.resourceId, () => [])
+            .add(row.readTable(tags));
+      }
+    }
+    return result;
+  }
+
   /// 获取标签下的所有资源
   Future<List<Resource>> getResourcesForTag(String tagId) async {
     final query = select(resources).join([

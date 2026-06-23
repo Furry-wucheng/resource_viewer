@@ -108,6 +108,33 @@ void main() {
       expect(center.b, lessThan(50));
     });
 
+    test('递归使用子目录中的第一张图片作为缩略图', () async {
+      await Directory(p.join(tempDir.path, 'chapter-1')).create();
+      final image = img.Image(width: 400, height: 600);
+      img.fill(image, color: img.ColorRgb8(20, 200, 20));
+      await File(
+        p.join(tempDir.path, 'chapter-1', '001.jpg'),
+      ).writeAsBytes(img.encodeJpg(image));
+
+      final result = await generator.generate(fileSource, '', 'nested');
+
+      expect(result, isNotNull);
+      expect(await File(result!).exists(), true);
+    });
+
+    test('小尺寸图片直接写入封面文件', () async {
+      await createTestImage('small.jpg', width: 90, height: 120);
+      final originalBytes = await File(
+        p.join(tempDir.path, 'small.jpg'),
+      ).readAsBytes();
+
+      final result = await generator.generate(fileSource, '', 'small');
+
+      expect(result, isNotNull);
+      final thumbnailBytes = await File(result!).readAsBytes();
+      expect(thumbnailBytes, originalBytes);
+    });
+
     test('空目录返回 null', () async {
       final result = await generator.generate(fileSource, '', 'resource-1');
       expect(result, isNull);

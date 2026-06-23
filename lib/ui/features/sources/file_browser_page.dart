@@ -11,6 +11,7 @@ import '../../../domain/models/file_entry.dart';
 import '../../../shared/file_source/file_source_factory.dart';
 import '../../core/view_models/base_view_model.dart';
 import '../tags/widgets/tag_multi_select_sheet.dart';
+import 'widgets/batch_add_resources_dialog.dart';
 import '../viewer/file_viewer_page.dart';
 import 'view_models/file_browser_view_model.dart';
 import 'widgets/directory_tree.dart';
@@ -71,7 +72,6 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
     );
   }
 }
-
 class _FileBrowserView extends StatelessWidget {
   const _FileBrowserView();
 
@@ -372,6 +372,8 @@ class _FileBrowserView extends StatelessWidget {
   }
 
   /// 批量添加资源
+  ///
+  /// 打开统一弹窗，合并确认、组织模式选择和标签选择。
   Future<void> _batchAddResources(
     BuildContext context,
     FileBrowserViewModel vm,
@@ -384,46 +386,19 @@ class _FileBrowserView extends StatelessWidget {
       return;
     }
 
-    final choice = await showDialog<_BatchAddChoice>(
+    final result = await BatchAddResourcesDialog.show(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('添加资源'),
-        content: Text('将检查并添加 ${selected.length} 个所选项目，空文件夹和已入库项目会被跳过。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _BatchAddChoice.skipTags),
-            child: const Text('跳过标签'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _BatchAddChoice.selectTags),
-            child: const Text('下一步：打标签'),
-          ),
-        ],
-      ),
+      itemCount: selected.length,
     );
-    if (choice == null || !context.mounted) return;
+    if (result == null || !context.mounted) return;
 
-    var tagIds = <String>[];
-    if (choice == _BatchAddChoice.selectTags) {
-      final selectedTagIds = await TagMultiSelectSheet.show(
-        context: context,
-        selectedTagIds: {},
-        title: '为新资源选择标签',
-      );
-      if (selectedTagIds == null || !context.mounted) return;
-      tagIds = selectedTagIds.toList();
-    }
-
-    final result = await vm.addSelectedResources(tagIds: tagIds);
+    final addResult = await vm.addSelectedResources(
+      tagIds: result.tagIds.toList(),
+      organizationMode: result.organizationMode,
+    );
     if (!context.mounted) return;
 
-    final message = switch (result) {
+    final message = switch (addResult) {
       Ok(:final value) => '已添加 ${value.added} 项，跳过 ${value.skipped} 项',
       Err(:final error) => '添加失败：${error.message}',
     };
@@ -527,5 +502,3 @@ class _FileBrowserView extends StatelessWidget {
     await vm.updateResourceTags(entry.path, selectedTagIds);
   }
 }
-
-enum _BatchAddChoice { skipTags, selectTags }

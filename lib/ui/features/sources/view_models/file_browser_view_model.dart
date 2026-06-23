@@ -204,17 +204,13 @@ class FileBrowserViewModel extends BaseViewModel {
 
   /// 加载资源标签
   Future<void> _loadResourceTags(List<String> resourceIds) async {
-    final tagsMap = <String, List<Tag>>{};
-    for (final id in resourceIds) {
-      final result = await tagRepository.getTagsForResource(id);
-      switch (result) {
-        case Ok(:final value):
-          tagsMap[id] = value;
-        case Err():
-          tagsMap[id] = [];
-      }
+    final result = await tagRepository.getTagsForResources(resourceIds);
+    switch (result) {
+      case Ok(:final value):
+        _resourceTags = value;
+      case Err():
+        _resourceTags = {for (final id in resourceIds) id: []};
     }
-    _resourceTags = tagsMap;
   }
 
   /// 检查路径是否已入库
@@ -297,6 +293,7 @@ class FileBrowserViewModel extends BaseViewModel {
   /// 将当前选中的兼容项目批量加入资源库。
   Future<Result<BatchAddResult>> addSelectedResources({
     List<String> tagIds = const [],
+    OrganizationMode? organizationMode,
   }) async {
     final fileSource = fileSourceFactory.get(sourceId);
     if (fileSource == null) {
@@ -325,7 +322,7 @@ class FileBrowserViewModel extends BaseViewModel {
         name: entry.name,
         type: type,
         relativePath: entry.path,
-        organizationMode: OrganizationMode.direct,
+        organizationMode: organizationMode,
         fileSize: entry.size,
         tagIds: tagIds,
       );

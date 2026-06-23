@@ -14,6 +14,10 @@ import 'thumbnail_generator.dart';
 ///
 /// 取资源文件夹内第一张图片，缩放至 2:3 竖版缩略图（180×270）。
 class ImageThumbnailGenerator implements ThumbnailGenerator {
+  static const _maxCoverSearchDepth = 4;
+  static const _maxCoverSearchDirectories = 64;
+  static const _smallImageByteLimit = 512 * 1024;
+
   /// 支持的图片扩展名
   static const _supportedExtensions = {
     '.jpg',
@@ -37,18 +41,7 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
   ) async {
     try {
       // 列出目录中的文件
-      final entries = await source.listDirectory(relativePath);
-
-      // 找到第一张支持的图片
-      String? firstImagePath;
-      for (final entry in entries) {
-        if (entry.isDirectory) continue;
-        final ext = p.extension(entry.name).toLowerCase();
-        if (_supportedExtensions.contains(ext)) {
-          firstImagePath = entry.path;
-          break;
-        }
-      }
+      final firstImagePath = await _findFirstImagePath(source, relativePath);
 
       if (firstImagePath == null) return null;
 
@@ -56,7 +49,10 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
       final imageBytes = await source.readFile(firstImagePath);
 
       // 解码图片
-      final thumbBytes = await Isolate.run(() => _encodeThumbnail(imageBytes));
+      final extension = p.extension(firstImagePath).toLowerCase();
+      final thumbBytes = await Isolate.run(
+        () => _encodeThumbnail(imageBytes, extension),
+      );
       if (thumbBytes == null) return null;
 
       // 确定输出目录
@@ -78,16 +74,58 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
     }
   }
 
-  static List<int>? _encodeThumbnail(Uint8List bytes) {
+  Future<String?> _findFirstImagePath(
+    FileSource source,
+    String rootPath,
+  ) async {
+    var visitedDirectories = 0;
+
+    Future<String?> visit(String path, int depth) async {
+      if (depth > _maxCoverSearchDepth) return null;
+      if (visitedDirectories++ >= _maxCoverSearchDirectories) return null;
+
+      final entries = await source.listDirectory(path);
+      for (final entry in entries.where((entry) => !entry.isDirectory)) {
+        if (_supportedExtensions.contains(
+          p.extension(entry.name).toLowerCase(),
+        )) {
+          return entry.path;
+        }
+      }
+      for (final entry in entries.where((entry) => entry.isDirectory)) {
+        final found = await visit(entry.path, depth + 1);
+        if (found != null) return found;
+      }
+      return null;
+    }
+
+    return visit(rootPath, 0);
+  }
+
+  static List<int>? _encodeThumbnail(Uint8List bytes, String extension) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
     final firstFrame = img.Image.from(decoded.getFrame(0), noAnimation: true);
+    if (_canUseOriginalBytes(bytes, firstFrame, extension)) {
+      return bytes;
+    }
     final thumbnail = _resizeAndCrop(
       firstFrame,
       ThumbnailGenerator.thumbWidth,
       ThumbnailGenerator.thumbHeight,
     );
     return img.encodeJpg(thumbnail, quality: ThumbnailGenerator.jpegQuality);
+  }
+
+  static bool _canUseOriginalBytes(
+    Uint8List bytes,
+    img.Image image,
+    String extension,
+  ) {
+    if (bytes.length > _smallImageByteLimit) return false;
+    if (image.width > ThumbnailGenerator.thumbWidth) return false;
+    if (image.height > ThumbnailGenerator.thumbHeight) return false;
+    return extension == '.jpg' || extension == '.jpeg' || extension == '.png';
   }
 
   /// 缩放并裁剪图片到目标尺寸（居中裁剪）

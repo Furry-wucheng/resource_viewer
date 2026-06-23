@@ -25,6 +25,9 @@ class ResourceGrid extends StatefulWidget {
     this.favoriteResourceIds = const {},
     this.onAddSource,
     this.onFavoriteTap,
+    this.isMultiSelectMode = false,
+    this.selectedResourceIds = const {},
+    this.onToggleSelection,
   });
 
   final List<Resource> resources;
@@ -37,6 +40,15 @@ class ResourceGrid extends StatefulWidget {
 
   /// 收藏按钮点击回调
   final void Function(String resourceId)? onFavoriteTap;
+
+  /// 是否处于多选模式
+  final bool isMultiSelectMode;
+
+  /// 多选模式下被选中的资源 ID
+  final Set<String> selectedResourceIds;
+
+  /// 多选模式下切换选中状态
+  final void Function(String id)? onToggleSelection;
 
   @override
   State<ResourceGrid> createState() => _ResourceGridState();
@@ -87,12 +99,26 @@ class _ResourceGridState extends State<ResourceGrid> {
             return ResourceGridItem(
               resource: resource,
               thumbnailPath: widget.thumbnailPaths[resource.id],
-              onTap: () => _openResource(context, resource),
-              onLongPress: () => _showResourceMenu(context, resource),
+              onTap: () {
+                if (widget.isMultiSelectMode) {
+                  widget.onToggleSelection?.call(resource.id);
+                } else {
+                  _openResource(context, resource);
+                }
+              },
+              onLongPress: () {
+                if (!widget.isMultiSelectMode) {
+                  _showResourceMenu(context, resource);
+                }
+              },
               isFavorited: widget.favoriteResourceIds.contains(resource.id),
-              onFavoriteTap: widget.onFavoriteTap != null
-                  ? () => widget.onFavoriteTap!(resource.id)
-                  : null,
+              onFavoriteTap: widget.isMultiSelectMode
+                  ? null
+                  : widget.onFavoriteTap != null
+                      ? () => widget.onFavoriteTap!(resource.id)
+                      : null,
+              isMultiSelectMode: widget.isMultiSelectMode,
+              isSelected: widget.selectedResourceIds.contains(resource.id),
             );
           },
         );

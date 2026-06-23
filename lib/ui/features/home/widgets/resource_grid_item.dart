@@ -17,6 +17,8 @@ class ResourceGridItem extends StatelessWidget {
     this.isFavorited = false,
     this.onFavoriteTap,
     this.onLongPress,
+    this.isMultiSelectMode = false,
+    this.isSelected = false,
   });
 
   final Resource resource;
@@ -32,10 +34,24 @@ class ResourceGridItem extends StatelessWidget {
   /// 长按回调
   final VoidCallback? onLongPress;
 
+  /// 是否处于多选模式
+  final bool isMultiSelectMode;
+
+  /// 多选模式下是否被选中
+  final bool isSelected;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: isMultiSelectMode && isSelected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.primary, width: 2.5),
+            )
+          : null,
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
@@ -44,6 +60,15 @@ class ResourceGridItem extends StatelessWidget {
           children: [
             // 缩略图 / 占位
             _buildThumbnail(),
+            // 多选模式下的选中遮罩
+            if (isMultiSelectMode)
+              Positioned.fill(
+                child: Container(
+                  color: isSelected
+                      ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.25),
+                ),
+              ),
             // 底部渐变 + 名称
             Positioned(
               left: 0,
@@ -68,10 +93,36 @@ class ResourceGridItem extends StatelessWidget {
               ),
             ),
             // 类型角标
-            if (_showsTypeBadge)
+            if (_showsTypeBadge && !isMultiSelectMode)
               Positioned(right: 4, bottom: 4, child: _buildTypeBadge()),
-            // 收藏按钮
-            Positioned(left: 4, top: 4, child: _buildFavoriteButton()),
+            // 收藏按钮（多选模式下隐藏）
+            if (!isMultiSelectMode)
+              Positioned(left: 4, top: 4, child: _buildFavoriteButton()),
+            // 多选模式下右上角勾选图标
+            if (isMultiSelectMode)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : Colors.white.withValues(alpha: 0.8),
+                    border: Border.all(
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : Colors.grey.shade400,
+                      width: 2,
+                    ),
+                  ),
+                  child: isSelected
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      : null,
+                ),
+              ),
           ],
         ),
       ),

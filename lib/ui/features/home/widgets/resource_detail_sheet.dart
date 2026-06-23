@@ -22,15 +22,14 @@ class ResourceDetailSheet extends StatefulWidget {
   final Resource resource;
   final VoidCallback? onResourceUpdated;
 
-  /// 显示资源详情弹窗
+  /// 显示资源详情弹窗（居中 Dialog）
   static Future<void> show({
     required BuildContext context,
     required Resource resource,
     VoidCallback? onResourceUpdated,
   }) {
-    return showModalBottomSheet(
+    return showDialog(
       context: context,
-      isScrollControlled: true,
       builder: (context) => ResourceDetailSheet(
         resource: resource,
         onResourceUpdated: onResourceUpdated,
@@ -127,60 +126,66 @@ class _ResourceDetailSheetState extends State<ResourceDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.8,
-      ),
-      child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 拖拽手柄
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  // 名称编辑
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: '资源名称',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.check),
-                          onPressed: _saveName,
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 420,
+          maxHeight: screenHeight * 0.85,
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: _loading
+              ? const SizedBox(
+                  height: 200,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 标题
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+                        child: Text(
+                          '资源详情',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
+                      // 名称编辑
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: TextField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            labelText: '资源名称',
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.check),
+                              onPressed: _saveName,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 信息区域
+                      _buildInfoRows(theme),
+                      const Divider(),
+                      // 组织模式
+                      _buildOrgModeSelector(theme),
+                      const Divider(),
+                      // 标签编辑
+                      _buildTagsSection(theme),
+                      const SizedBox(height: 24),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  // 信息区域
-                  _buildInfoRows(theme),
-                  const Divider(),
-                  // 组织模式
-                  _buildOrgModeSelector(theme),
-                  const Divider(),
-                  // 标签编辑
-                  _buildTagsSection(theme),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
+                ),
+        ),
+      ),
     );
   }
 
@@ -193,7 +198,7 @@ class _ResourceDetailSheetState extends State<ResourceDetailSheet> {
     };
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
           _infoRow(theme, '类型', typeLabel),
@@ -239,7 +244,7 @@ class _ResourceDetailSheetState extends State<ResourceDetailSheet> {
 
   Widget _buildOrgModeSelector(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -269,7 +274,7 @@ class _ResourceDetailSheetState extends State<ResourceDetailSheet> {
 
   Widget _buildTagsSection(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

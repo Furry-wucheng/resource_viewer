@@ -247,6 +247,21 @@ class TagRepository {
     }
   }
 
+  /// 批量获取多个资源的标签。
+  Future<Result<Map<String, List<domain.Tag>>>> getTagsForResources(
+    List<String> resourceIds,
+  ) async {
+    try {
+      final rows = await _db.getTagsForResources(resourceIds);
+      return Ok({
+        for (final entry in rows.entries)
+          entry.key: entry.value.map(_toDomain).toList(),
+      });
+    } catch (e) {
+      return Err(DatabaseError('批量获取资源标签失败', cause: e));
+    }
+  }
+
   /// 获取标签下的所有资源 ID
   Future<Result<List<String>>> getResourceIdsForTag(String tagId) async {
     try {

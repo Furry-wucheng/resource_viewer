@@ -48,6 +48,7 @@ class ThumbnailRepository {
     '.tiff',
     '.tif',
   };
+  static const _smallImageByteLimit = 512 * 1024;
   static const _videoExtensions = {
     '.mp4',
     '.mkv',
@@ -101,23 +102,27 @@ class ThumbnailRepository {
       entry.size ?? BigInt.zero,
     ].join('|');
     // 缓存版本变更时自动绕过旧的缩略图。
-    return 'preview_v2_${sha256.convert(utf8.encode(fingerprint))}';
+    return 'preview_v3_${sha256.convert(utf8.encode(fingerprint))}';
   }
 
   /// 读取原图 → Isolate 内压缩 → 返回小尺寸预览字节
   Future<Uint8List?> _previewImage(FileSource source, String path) async {
     final bytes = await source.readFile(path);
-    final compressed = await Isolate.run(() => _compressPreview(bytes));
+    final extension = p.extension(path).toLowerCase();
+    final compressed = await Isolate.run(
+      () => _compressPreview(bytes, extension),
+    );
     return compressed;
   }
 
   /// 在 Isolate 中压缩图片到统一缩略图尺寸
-  static Uint8List? _compressPreview(Uint8List bytes) {
+  static Uint8List? _compressPreview(Uint8List bytes, String extension) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
     // GIF/WebP 可能包含多帧。缩略图只取已合成的第一帧，
     // noAnimation 防止 resize/crop 继续处理整个动画帧列表。
     final image = img.Image.from(decoded.getFrame(0), noAnimation: true);
+    if (_canUseOriginalBytes(bytes, image, extension)) return bytes;
     final scale = max(
       ThumbnailGenerator.thumbWidth / image.width,
       ThumbnailGenerator.thumbHeight / image.height,
@@ -145,13 +150,25 @@ class ThumbnailRepository {
     );
   }
 
+  static bool _canUseOriginalBytes(
+    Uint8List bytes,
+    img.Image image,
+    String extension,
+  ) {
+    if (bytes.length > _smallImageByteLimit) return false;
+    if (image.width > ThumbnailGenerator.thumbWidth) return false;
+    if (image.height > ThumbnailGenerator.thumbHeight) return false;
+    return extension == '.jpg' || extension == '.jpeg' || extension == '.png';
+  }
+
   Future<Uint8List?> _previewDirectory(
     FileSource source,
     String rootPath,
   ) async {
-    final entries = await source.listDirectory(rootPath);
     String? firstVideoPath;
-    for (final entry in entries.where((entry) => !entry.isDirectory)) {
+
+    final rootEntries = await source.listDirectory(rootPath);
+    for (final entry in rootEntries.where((entry) => !entry.isDirectory)) {
       final extension = p.extension(entry.name).toLowerCase();
       if (_imageExtensions.contains(extension)) {
         return _previewImage(source, entry.path);
@@ -160,9 +177,11 @@ class ThumbnailRepository {
         firstVideoPath = entry.path;
       }
     }
-    return firstVideoPath == null
+
+    final videoPath = firstVideoPath;
+    return videoPath == null
         ? null
-        : _videoGenerator.generatePreview(source, firstVideoPath);
+        : _videoGenerator.generatePreview(source, videoPath);
   }
 
   /// 生成缩略图

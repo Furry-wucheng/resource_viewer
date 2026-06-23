@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:resource_viewer/data/services/database_service.dart';
 import 'package:resource_viewer/data/models/enums.dart';
@@ -257,6 +258,53 @@ void main() {
       final checkResult = await repository.getTagById('test-tag-1');
       expect(checkResult, isA<Ok>());
       expect((checkResult as Ok).value, isNull);
+    });
+
+    test('getTagsForResources - 批量返回每个资源的标签', () async {
+      await db.createSource(
+        SourcesCompanion.insert(
+          id: 'source-1',
+          name: '本地源',
+          type: SourceType.local,
+          rootPath: 'D:/Comics',
+          isAvailable: const Value(true),
+        ),
+      );
+      await db.createResource(
+        ResourcesCompanion.insert(
+          id: 'resource-1',
+          sourceId: 'source-1',
+          name: '资源1',
+          type: ResourceType.folder,
+          relativePath: 'book-1',
+        ),
+      );
+      await db.createResource(
+        ResourcesCompanion.insert(
+          id: 'resource-2',
+          sourceId: 'source-1',
+          name: '资源2',
+          type: ResourceType.folder,
+          relativePath: 'book-2',
+        ),
+      );
+      await repository.createTag(id: 'tag-1', name: '漫画', color: '#FF0000');
+      await repository.createTag(id: 'tag-2', name: '画集', color: '#00FF00');
+      await repository.addTagToResource('resource-1', 'tag-1');
+      await repository.addTagToResource('resource-1', 'tag-2');
+
+      final result = await repository.getTagsForResources([
+        'resource-1',
+        'resource-2',
+      ]);
+
+      expect(result, isA<Ok<Map<String, List<domain.Tag>>>>());
+      final value = (result as Ok<Map<String, List<domain.Tag>>>).value;
+      expect(
+        value['resource-1']?.map((t) => t.id),
+        containsAll(['tag-1', 'tag-2']),
+      );
+      expect(value['resource-2'], isEmpty);
     });
 
     test('deleteTag - 删除标签后级联清除 ResourceTag', () async {

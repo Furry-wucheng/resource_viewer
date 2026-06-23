@@ -12,6 +12,13 @@ import '../../../core/view_models/base_view_model.dart';
 /// 内置"收藏"标签的固定 ID
 const String favoriteTagId = '00000000-0000-0000-0000-000000000001';
 
+/// 批量删除结果
+class BatchDeleteResult {
+  const BatchDeleteResult({required this.deleted, required this.failed});
+  final int deleted;
+  final int failed;
+}
+
 /// 首页 ViewModel
 ///
 /// 监听可用资源列表，加载缩略图路径，管理收藏状态和筛选逻辑。
@@ -54,6 +61,10 @@ class HomeViewModel extends BaseViewModel {
   Timer? _searchDebounce;
   int _filterGeneration = 0;
 
+  // 多选状态
+  bool _isMultiSelectMode = false;
+  final Set<String> _selectedResourceIds = {};
+
   List<Resource> get resources => _resources;
   Map<String, String?> get thumbnailPaths => _thumbnailPaths;
   Set<String> get favoriteResourceIds => _favoriteResourceIds;
@@ -67,6 +78,15 @@ class HomeViewModel extends BaseViewModel {
   bool get isFavoriteSelected => _selectedTagIds.contains(favoriteTagId);
   bool get hasActiveFilter =>
       _selectedTagIds.isNotEmpty || _searchQuery.isNotEmpty;
+
+  // 多选状态 getter
+  bool get isMultiSelectMode => _isMultiSelectMode;
+  Set<String> get selectedResourceIds =>
+      Set.unmodifiable(_selectedResourceIds);
+  int get selectedCount => _selectedResourceIds.length;
+  bool get isAllVisibleSelected =>
+      _resources.isNotEmpty &&
+      _resources.every((r) => _selectedResourceIds.contains(r.id));
 
   /// 开始监听可用资源
   void startWatching() {
@@ -315,5 +335,65 @@ class HomeViewModel extends BaseViewModel {
     _searchDebounce?.cancel();
     _subscription?.cancel();
     super.dispose();
+  }
+
+  // ===== 多选模式 =====
+
+  /// 进入多选模式
+  void enterMultiSelectMode() {
+    _isMultiSelectMode = true;
+    _selectedResourceIds.clear();
+    notifyListeners();
+  }
+
+  /// 退出多选模式
+  void exitMultiSelectMode() {
+    _isMultiSelectMode = false;
+    _selectedResourceIds.clear();
+    notifyListeners();
+  }
+
+  /// 切换单个资源的选中状态
+  void toggleResourceSelection(String id) {
+    if (_selectedResourceIds.contains(id)) {
+      _selectedResourceIds.remove(id);
+    } else {
+      _selectedResourceIds.add(id);
+    }
+    notifyListeners();
+  }
+
+  /// 全选 / 取消全选当前可见资源
+  void toggleSelectAllVisible() {
+    if (isAllVisibleSelected) {
+      _selectedResourceIds.clear();
+    } else {
+      _selectedResourceIds.addAll(_resources.map((r) => r.id));
+    }
+    notifyListeners();
+  }
+
+  /// 批量删除选中的资源
+  Future<Result<BatchDeleteResult>> batchDeleteSelectedResources() async {
+    final ids = _selectedResourceIds.toList();
+    var deleted = 0;
+    var failed = 0;
+
+    for (final id in ids) {
+      final result = await resourceRepository.deleteResource(id);
+      switch (result) {
+        case Ok():
+          deleted++;
+        case Err():
+          failed++;
+      }
+    }
+
+    _selectedResourceIds.clear();
+    exitMultiSelectMode();
+    // 刷新列表
+    await loadResources();
+
+    return Ok(BatchDeleteResult(deleted: deleted, failed: failed));
   }
 }

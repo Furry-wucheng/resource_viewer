@@ -7,6 +7,7 @@ import 'package:resource_viewer/data/repositories/thumbnail_repository.dart';
 import 'package:resource_viewer/domain/core/result.dart';
 import 'package:resource_viewer/domain/models/file_entry.dart';
 import 'package:resource_viewer/domain/models/resource.dart';
+import 'package:resource_viewer/domain/models/tag.dart';
 import 'package:resource_viewer/shared/file_source/file_source.dart';
 import 'package:resource_viewer/shared/file_source/file_source_factory.dart';
 import 'package:resource_viewer/ui/features/sources/view_models/file_browser_view_model.dart';
@@ -15,7 +16,14 @@ class _MockFilesystemRepository extends Mock implements FilesystemRepository {}
 
 class _MockResourceRepository extends Mock implements ResourceRepository {}
 
-class _MockTagRepository extends Mock implements TagRepository {}
+class _MockTagRepository extends Mock implements TagRepository {
+  @override
+  Future<Result<Map<String, List<Tag>>>> getTagsForResources(
+    List<String> resourceIds,
+  ) async {
+    return Ok({for (final id in resourceIds) id: const []});
+  }
+}
 
 class _MockThumbnailRepository extends Mock implements ThumbnailRepository {}
 
@@ -60,7 +68,7 @@ void main() {
         name: '混合资源',
         type: ResourceType.folder,
         relativePath: 'mixed',
-        organizationMode: OrganizationMode.direct,
+        organizationMode: any(named: 'organizationMode'),
         fileSize: null,
         tagIds: ['tag-1'],
       ),
@@ -72,7 +80,7 @@ void main() {
           name: '混合资源',
           type: ResourceType.folder,
           relativePath: 'mixed',
-          organizationMode: OrganizationMode.direct,
+          organizationMode: null,
           createdAt: DateTime(2026),
           updatedAt: DateTime(2026),
         ),
@@ -114,7 +122,7 @@ void main() {
         type: ResourceType.folder,
         relativePath: 'mixed',
         tagIds: ['tag-1'],
-        organizationMode: OrganizationMode.direct,
+        organizationMode: any(named: 'organizationMode'),
         fileSize: null,
       ),
     ).called(1);
@@ -144,7 +152,7 @@ void main() {
             name: 'file1.jpg',
             type: ResourceType.folder,
             relativePath: 'file1.jpg',
-            organizationMode: OrganizationMode.direct,
+            organizationMode: null,
             createdAt: DateTime(2026),
             updatedAt: DateTime(2026),
           ),
@@ -154,7 +162,7 @@ void main() {
             name: 'file2.jpg',
             type: ResourceType.folder,
             relativePath: 'file2.jpg',
-            organizationMode: OrganizationMode.direct,
+            organizationMode: null,
             createdAt: DateTime(2026),
             updatedAt: DateTime(2026),
           ),
@@ -219,7 +227,7 @@ void main() {
             name: 'file1.jpg',
             type: ResourceType.folder,
             relativePath: 'file1.jpg',
-            organizationMode: OrganizationMode.direct,
+            organizationMode: null,
             createdAt: DateTime(2026),
             updatedAt: DateTime(2026),
           ),
@@ -276,7 +284,7 @@ void main() {
             name: 'file1.jpg',
             type: ResourceType.folder,
             relativePath: 'file1.jpg',
-            organizationMode: OrganizationMode.direct,
+            organizationMode: null,
             createdAt: DateTime(2026),
             updatedAt: DateTime(2026),
           ),
