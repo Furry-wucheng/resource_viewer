@@ -2,8 +2,10 @@ import 'package:drift/drift.dart';
 
 import '../services/database_service.dart';
 import '../models/resources.dart' as drift;
-import '../../domain/models/resource.dart' as domain;
+import '../../domain/core/paged_result.dart';
 import '../../domain/core/result.dart';
+import '../../domain/models/resource.dart' as domain;
+import '../../domain/models/resource_query.dart';
 
 /// 资源 Repository
 ///
@@ -44,6 +46,19 @@ class ResourceRepository {
       return Ok(resources);
     } catch (e) {
       return Err(DatabaseError('获取数据源资源失败', cause: e));
+    }
+  }
+
+  /// 按 sourceId + paths 批量查询资源（用于当前目录入库状态）
+  Future<Result<List<domain.Resource>>> getResourcesBySourceIdAndPaths(
+    String sourceId,
+    List<String> paths,
+  ) async {
+    try {
+      final rows = await _db.getResourcesBySourceIdAndPaths(sourceId, paths);
+      return Ok(rows.map(_toDomain).toList());
+    } catch (e) {
+      return Err(DatabaseError('批量查询资源失败', cause: e));
     }
   }
 
@@ -288,6 +303,56 @@ class ResourceRepository {
       return Ok(resources);
     } catch (e) {
       return Err(DatabaseError('获取可用资源失败', cause: e));
+    }
+  }
+
+  /// 统一资源查询（可用源过滤 + 搜索 + 标签交集 + 收藏 + 键集分页）
+  Future<Result<PagedResult<domain.Resource>>> queryResources(
+    ResourceQuery query,
+  ) async {
+    try {
+      final rows = await _db.queryResources(
+        searchQuery: query.searchQuery,
+        tagIds: query.tagIds,
+        favoriteOnly: query.favoriteOnly,
+        lastCreatedAt: query.cursor?.lastCreatedAt,
+        lastId: query.cursor?.lastId,
+        pageSize: query.pageSize,
+      );
+
+      final hasMore = rows.length > query.pageSize;
+      final items = rows.take(query.pageSize).map(_toDomain).toList();
+
+      ResourceCursor? nextCursor;
+      if (hasMore && items.isNotEmpty) {
+        final last = rows[query.pageSize - 1];
+        nextCursor = ResourceCursor(
+          lastCreatedAt: last.createdAt.toIso8601String(),
+          lastId: last.id,
+        );
+      }
+
+      return Ok(PagedResult(
+        items: items,
+        nextCursor: nextCursor?.encode(),
+        hasMore: hasMore,
+      ));
+    } catch (e) {
+      return Err(DatabaseError('查询资源失败', cause: e));
+    }
+  }
+
+  /// 统一计数查询
+  Future<Result<int>> countQueryResources(ResourceQuery query) async {
+    try {
+      final count = await _db.countQueryResources(
+        searchQuery: query.searchQuery,
+        tagIds: query.tagIds,
+        favoriteOnly: query.favoriteOnly,
+      );
+      return Ok(count);
+    } catch (e) {
+      return Err(DatabaseError('统计资源数量失败', cause: e));
     }
   }
 

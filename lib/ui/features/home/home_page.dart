@@ -40,7 +40,8 @@ class _HomePageState extends State<HomePage> {
       initialTagId: widget.initialTagId,
     );
     _viewModel.addListener(_onStateChanged);
-    _viewModel.loadResources();
+    _viewModel.loadFirstPage();
+    _viewModel.loadInitialData();
     _viewModel.startWatching();
   }
 
@@ -264,7 +265,7 @@ class _HomePageState extends State<HomePage> {
                 selectedTagIds: _viewModel.selectedTagIds,
                 isAllSelected: _viewModel.isAllSelected,
                 isFavoriteSelected: _viewModel.isFavoriteSelected,
-                filteredCount: _viewModel.filteredCount,
+                filteredCount: _viewModel.loadedCount,
                 totalCount: _viewModel.totalCount,
                 hasActiveFilter: _viewModel.hasActiveFilter,
                 onAllTap: _viewModel.selectAll,
@@ -282,6 +283,10 @@ class _HomePageState extends State<HomePage> {
                 isMultiSelectMode: _viewModel.isMultiSelectMode,
                 selectedResourceIds: _viewModel.selectedResourceIds,
                 onToggleSelection: _viewModel.toggleResourceSelection,
+                hasMore: _viewModel.hasMore,
+                isLoadingMore: _viewModel.isLoadingMore,
+                loadMoreError: _viewModel.loadMoreError,
+                onLoadMore: _viewModel.loadNextPage,
               ),
             ),
           ],

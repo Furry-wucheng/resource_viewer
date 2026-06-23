@@ -16,7 +16,7 @@ import 'resource_grid_item.dart';
 /// 资源响应式网格
 ///
 /// 根据屏幕宽度自动调整列数（≥6列）。
-/// 点击资源跳转到查看器。
+/// 支持滚动到底部加载更多（键集分页）。
 class ResourceGrid extends StatefulWidget {
   const ResourceGrid({
     super.key,
@@ -28,6 +28,10 @@ class ResourceGrid extends StatefulWidget {
     this.isMultiSelectMode = false,
     this.selectedResourceIds = const {},
     this.onToggleSelection,
+    this.hasMore = false,
+    this.isLoadingMore = false,
+    this.loadMoreError,
+    this.onLoadMore,
   });
 
   final List<Resource> resources;
@@ -50,12 +54,59 @@ class ResourceGrid extends StatefulWidget {
   /// 多选模式下切换选中状态
   final void Function(String id)? onToggleSelection;
 
+  /// 是否有更多数据可加载
+  final bool hasMore;
+
+  /// 是否正在加载更多
+  final bool isLoadingMore;
+
+  /// 加载更多错误信息
+  final String? loadMoreError;
+
+  /// 加载更多回调
+  final VoidCallback? onLoadMore;
+
   @override
   State<ResourceGrid> createState() => _ResourceGridState();
 }
 
 class _ResourceGridState extends State<ResourceGrid> {
   bool _navigationInProgress = false;
+  final _scrollController = ScrollController();
+  bool _loadMoreThrottled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(ResourceGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 加载完成或错误后重置节流，允许再次触发
+    if (!widget.isLoadingMore && widget.loadMoreError == null) {
+      _loadMoreThrottled = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadMoreThrottled) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (widget.hasMore && !widget.isLoadingMore && widget.onLoadMore != null) {
+        _loadMoreThrottled = true;
+        widget.onLoadMore!();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +136,7 @@ class _ResourceGridState extends State<ResourceGrid> {
       builder: (context, constraints) {
         return GridView.builder(
           key: const PageStorageKey<String>('home-resource-grid'),
+          controller: _scrollController,
           padding: const EdgeInsets.all(12),
           scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -93,8 +145,13 @@ class _ResourceGridState extends State<ResourceGrid> {
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
           ),
-          itemCount: widget.resources.length,
+          // 底部加载指示器占一个额外位置
+          itemCount: widget.resources.length + (_hasBottomWidget ? 1 : 0),
           itemBuilder: (context, index) {
+            // 最后一项是底部状态
+            if (index >= widget.resources.length) {
+              return _buildBottomWidget();
+            }
             final resource = widget.resources[index];
             return ResourceGridItem(
               resource: resource,
@@ -124,6 +181,57 @@ class _ResourceGridState extends State<ResourceGrid> {
         );
       },
     );
+  }
+
+  bool get _hasBottomWidget =>
+      widget.isLoadingMore ||
+      widget.loadMoreError != null ||
+      (!widget.hasMore && widget.resources.isNotEmpty);
+
+  Widget _buildBottomWidget() {
+    if (widget.isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (widget.loadMoreError != null) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.loadMoreError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: widget.onLoadMore,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    // 已无更多
+    if (!widget.hasMore && widget.resources.isNotEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(
+          child: Text(
+            '— 已加载全部 —',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   void _showResourceMenu(BuildContext context, Resource resource) {
@@ -238,7 +346,7 @@ class _ResourceGridState extends State<ResourceGrid> {
         builder: (ctx) => AlertDialog(
           title: const Text('确认拆分并删除'),
           content: Text(
-            "原资源“${resource.name}”将被删除，拆出 ${pickerResult.paths.length} 个子资源。确定？",
+            '原资源“${resource.name}”将被删除，拆出 ${pickerResult.paths.length} 个子资源。确定？',
           ),
           actions: [
             TextButton(

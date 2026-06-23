@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -22,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -30,6 +31,11 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
       await _seedBuiltInTags();
       await _seedAppConfig();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(appConfig, appConfig.thumbnailConcurrency);
+      }
     },
     beforeOpen: (details) async {
       // 每连接必须执行的 PRAGMA（SQLite 默认关闭 foreign_keys）
@@ -71,6 +77,43 @@ class AppDatabase extends _$AppDatabase {
   );
 
   Future<void> _ensureAppConfig() => _seedAppConfig();
+
+  // ===== AppConfig DAO =====
+
+  /// 获取应用配置单例（id = 1）；缺失时兜底补建并返回默认值
+  Future<AppConfigRow> getAppConfig() async {
+    final row = await (select(appConfig)
+          ..where((c) => c.id.equals(1)))
+        .getSingleOrNull();
+    if (row != null) return row;
+    await _ensureAppConfig();
+    return (select(appConfig)..where((c) => c.id.equals(1))).getSingle();
+  }
+
+  /// 监听应用配置变化
+  Stream<AppConfigRow> watchAppConfig() => (select(appConfig)
+        ..where((c) => c.id.equals(1)))
+      .watchSingle();
+
+  /// 更新应用配置
+  Future<void> updateAppConfig(AppConfigCompanion entry) =>
+      update(appConfig).replace(entry);
+
+  /// 恢复应用配置为默认值
+  Future<void> resetAppConfig() async {
+    await (update(appConfig)..where((c) => c.id.equals(1))).write(
+      AppConfigCompanion(
+        themeMode: const Value(AppThemeMode.system),
+        pageDirection: const Value(PageDirection.rightToLeft),
+        doublePageMode: const Value(DoublePageMode.auto),
+        crossChapter: const Value(true),
+        cacheLimitMB: const Value(500),
+        thumbnailConcurrency: const Value(4),
+        autoSyncInterval: const Value(AutoSyncInterval.off),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
 
   // ===== Source DAO =====
 
@@ -142,6 +185,27 @@ class AppDatabase extends _$AppDatabase {
   /// 根据数据源 ID 获取资源列表
   Future<List<Resource>> getResourcesBySourceId(String sourceId) =>
       (select(resources)..where((r) => r.sourceId.equals(sourceId))).get();
+
+  /// 按 sourceId + paths 批量查询资源（用于当前目录入库状态）
+  Future<List<Resource>> getResourcesBySourceIdAndPaths(
+    String sourceId,
+    List<String> paths,
+  ) async {
+    if (paths.isEmpty) return [];
+    final result = <Resource>[];
+    // 分批查询避免 SQL 参数爆炸
+    const chunkSize = 100;
+    for (var start = 0; start < paths.length; start += chunkSize) {
+      final end = min(start + chunkSize, paths.length);
+      final chunk = paths.sublist(start, end);
+      final query = select(resources)
+        ..where(
+          (r) => r.sourceId.equals(sourceId) & r.relativePath.isIn(chunk),
+        );
+      result.addAll(await query.get());
+    }
+    return result;
+  }
 
   /// 创建资源
   Future<int> createResource(ResourcesCompanion entry) =>
@@ -298,6 +362,128 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {resourceTags},
     ).getSingle();
     return row.read<int>('result');
+  }
+
+  /// 构建筛选条件（可用源过滤 + 搜索 + 标签交集 + 收藏），供 query 和 count 共用
+  ({List<String> conditions, List<Variable<Object>> variables}) _buildFilterConditions({
+    String? searchQuery,
+    List<String>? tagIds,
+    bool favoriteOnly = false,
+  }) {
+    final conditions = <String>[];
+    final variables = <Variable<Object>>[];
+
+    // 可用源过滤
+    conditions.add('''
+      r.source_id IN (
+        SELECT s.id FROM sources AS s
+        WHERE s.enabled = 1 AND s.is_available = 1
+      )
+      AND r.is_available = 1
+    ''');
+
+    // 搜索（LIKE 通配符 % 和 _ 需转义避免误匹配）
+    if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+      conditions.add(r"r.name LIKE ? ESCAPE '\'");
+      final escaped = searchQuery.trim()
+          .replaceAll(r'\', r'\\')
+          .replaceAll('%', r'\%')
+          .replaceAll('_', r'\_');
+      variables.add(Variable.withString('%$escaped%'));
+    }
+
+    // 收藏筛选
+    if (favoriteOnly) {
+      conditions.add('''
+        r.id IN (
+          SELECT rt.resource_id FROM resource_tags AS rt
+          WHERE rt.tag_id = '00000000-0000-0000-0000-000000000001'
+        )
+      ''');
+    }
+
+    // 标签交集筛选
+    final effectiveTagIds = tagIds ?? <String>[];
+    if (effectiveTagIds.isNotEmpty) {
+      final placeholders = List.filled(effectiveTagIds.length, '?').join(', ');
+      conditions.add('''
+        r.id IN (
+          SELECT rt.resource_id
+          FROM resource_tags AS rt
+          WHERE rt.tag_id IN ($placeholders)
+          GROUP BY rt.resource_id
+          HAVING COUNT(DISTINCT rt.tag_id) = ?
+        )
+      ''');
+      variables.addAll(effectiveTagIds.map(Variable.withString));
+      variables.add(Variable.withInt(effectiveTagIds.length));
+    }
+
+    return (conditions: conditions, variables: variables);
+  }
+
+  /// 统一资源查询（可用源过滤 + 搜索 + 标签交集 + 收藏 + 键集分页）
+  ///
+  /// 返回 limit+1 条以便判断 hasMore。
+  Future<List<Resource>> queryResources({
+    String? searchQuery,
+    List<String>? tagIds,
+    bool favoriteOnly = false,
+    String? lastCreatedAt,
+    String? lastId,
+    int pageSize = 50,
+  }) async {
+    final (:conditions, :variables) = _buildFilterConditions(
+      searchQuery: searchQuery,
+      tagIds: tagIds,
+      favoriteOnly: favoriteOnly,
+    );
+
+    // 键集分页
+    if (lastCreatedAt != null && lastId != null) {
+      conditions.add(
+        '(r.created_at < ? OR (r.created_at = ? AND r.id > ?))',
+      );
+      variables
+        ..add(Variable.withDateTime(DateTime.parse(lastCreatedAt)))
+        ..add(Variable.withDateTime(DateTime.parse(lastCreatedAt)))
+        ..add(Variable.withString(lastId));
+    }
+
+    final where = conditions.join(' AND ');
+    final sql = '''
+      SELECT r.* FROM resources AS r
+      WHERE $where
+      ORDER BY r.created_at DESC, r.id ASC
+      LIMIT ${pageSize + 1}
+    ''';
+
+    return customSelect(
+      sql,
+      variables: variables,
+      readsFrom: {resources},
+    ).map((row) => resources.map(row.data)).get();
+  }
+
+  /// 统一计数查询（条件同上，无分页）
+  Future<int> countQueryResources({
+    String? searchQuery,
+    List<String>? tagIds,
+    bool favoriteOnly = false,
+  }) async {
+    final (:conditions, :variables) = _buildFilterConditions(
+      searchQuery: searchQuery,
+      tagIds: tagIds,
+      favoriteOnly: favoriteOnly,
+    );
+
+    final where = conditions.join(' AND ');
+    final row = await customSelect(
+      'SELECT COUNT(*) AS cnt FROM resources AS r WHERE $where',
+      variables: variables,
+      readsFrom: {resources},
+    ).getSingle();
+    return row.read<int>('cnt');
   }
 
   // ===== Tag DAO =====

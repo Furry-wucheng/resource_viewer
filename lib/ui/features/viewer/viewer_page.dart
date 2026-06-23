@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/repositories/settings_repository.dart';
+import '../../../domain/core/result.dart';
+import '../../../domain/models/app_config.dart' as domain;
 import '../../../shared/content_provider/content_provider.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import 'view_models/viewer_view_model.dart';
@@ -73,6 +76,9 @@ class _ViewerPageState extends State<ViewerPage> {
   String? _chapterHintText;
   bool _showChapterHint = false;
 
+  // 跨章节连续阅读（从 AppConfig 读取）
+  bool _crossChapter = true;
+
   // 窗口宽度（用于双页判断）
   double _windowWidth = 0;
   bool _lastDoublePage = false;
@@ -102,12 +108,28 @@ class _ViewerPageState extends State<ViewerPage> {
   }
 
   Future<void> _loadViewerSettings() async {
-    final direction = await ViewerViewModel.loadPageDirection();
-    final doubleMode = await ViewerViewModel.loadDoublePageMode();
+    // 从 AppConfig 读取全局默认值
+    final settingsRepo = context.read<SettingsRepository>();
+    final configResult = await settingsRepo.getConfig();
     if (!mounted) return;
-    _viewModel.applyPageDirection(direction);
-    _viewModel.applyDoublePageMode(doubleMode);
+    if (configResult case Ok(value: final config)) {
+      _viewModel.applyPageDirection(
+        config.pageDirection == domain.PageDirection.rightToLeft
+            ? PageDirection.rightToLeft
+            : PageDirection.leftToRight,
+      );
+      _viewModel.applyDoublePageMode(
+        _mapDoublePageMode(config.doublePageMode),
+      );
+      _crossChapter = config.crossChapter;
+    }
   }
+
+  DoublePageMode _mapDoublePageMode(domain.DoublePageMode mode) => switch (mode) {
+    domain.DoublePageMode.auto => DoublePageMode.auto,
+    domain.DoublePageMode.single => DoublePageMode.single,
+    domain.DoublePageMode.double => DoublePageMode.double,
+  };
 
   @override
   void dispose() {
@@ -230,8 +252,10 @@ class _ViewerPageState extends State<ViewerPage> {
               onFavoriteTap: widget.onFavoriteTap,
               pageDirection: vm.pageDirection,
               doublePageMode: vm.doublePageModeSetting,
-              onPageDirectionChanged: vm.setPageDirection,
-              onDoublePageModeChanged: vm.setDoublePageMode,
+              onPageDirectionChanged:
+                  vm.applyPageDirection, // 查看器内临时切换，不覆盖全局默认值
+              onDoublePageModeChanged:
+                  vm.applyDoublePageMode, // 查看器内临时切换，不覆盖全局默认值
             ),
           ),
         if (vm.isToolbarVisible && !isVideo && vm.totalPages > 1)
@@ -471,6 +495,11 @@ class _ViewerPageState extends State<ViewerPage> {
 
   /// 尝试跨章节跳转（在章节边界点击翻页时触发）
   void _tryCrossChapter(ViewerViewModel vm, {required bool isPrev}) {
+    if (!_crossChapter) {
+      _displayChapterHint(isPrev ? '已是第一章' : '已是最后一章');
+      return;
+    }
+
     final chapterName = isPrev
         ? vm.getPrevChapterName()
         : vm.getNextChapterName();

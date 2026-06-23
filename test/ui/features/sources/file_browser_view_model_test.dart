@@ -59,6 +59,9 @@ void main() {
       ]),
     );
     when(
+      () => resources.getResourcesBySourceIdAndPaths('source', any()),
+    ).thenAnswer((_) async => const Ok([]));
+    when(
       () => resources.getResourcesBySourceId('source'),
     ).thenAnswer((_) async => const Ok([]));
     when(
@@ -144,30 +147,32 @@ void main() {
           FileEntry(name: 'file2.jpg', path: 'file2.jpg', isDirectory: false),
         ]),
       );
-      when(() => resources.getResourcesBySourceId('source')).thenAnswer(
-        (_) async => Ok([
-          Resource(
-            id: 'res1',
-            sourceId: 'source',
-            name: 'file1.jpg',
-            type: ResourceType.folder,
-            relativePath: 'file1.jpg',
-            organizationMode: null,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          ),
-          Resource(
-            id: 'res2',
-            sourceId: 'source',
-            name: 'file2.jpg',
-            type: ResourceType.folder,
-            relativePath: 'file2.jpg',
-            organizationMode: null,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          ),
-        ]),
-      );
+      final importedResources = [
+        Resource(
+          id: 'res1',
+          sourceId: 'source',
+          name: 'file1.jpg',
+          type: ResourceType.folder,
+          relativePath: 'file1.jpg',
+          organizationMode: null,
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+        Resource(
+          id: 'res2',
+          sourceId: 'source',
+          name: 'file2.jpg',
+          type: ResourceType.folder,
+          relativePath: 'file2.jpg',
+          organizationMode: null,
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      ];
+      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
+          .thenAnswer((_) async => Ok(importedResources));
+      when(() => resources.getResourcesBySourceId('source'))
+          .thenAnswer((_) async => Ok(importedResources));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));
@@ -219,20 +224,20 @@ void main() {
           FileEntry(name: 'file2.jpg', path: 'file2.jpg', isDirectory: false),
         ]),
       );
-      when(() => resources.getResourcesBySourceId('source')).thenAnswer(
-        (_) async => Ok([
-          Resource(
-            id: 'res1',
-            sourceId: 'source',
-            name: 'file1.jpg',
-            type: ResourceType.folder,
-            relativePath: 'file1.jpg',
-            organizationMode: null,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          ),
-        ]),
+      final res1 = Resource(
+        id: 'res1',
+        sourceId: 'source',
+        name: 'file1.jpg',
+        type: ResourceType.folder,
+        relativePath: 'file1.jpg',
+        organizationMode: null,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
       );
+      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
+          .thenAnswer((_) async => Ok([res1]));
+      when(() => resources.getResourcesBySourceId('source'))
+          .thenAnswer((_) async => Ok([res1]));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));
@@ -276,20 +281,20 @@ void main() {
           FileEntry(name: 'file1.jpg', path: 'file1.jpg', isDirectory: false),
         ]),
       );
-      when(() => resources.getResourcesBySourceId('source')).thenAnswer(
-        (_) async => Ok([
-          Resource(
-            id: 'res1',
-            sourceId: 'source',
-            name: 'file1.jpg',
-            type: ResourceType.folder,
-            relativePath: 'file1.jpg',
-            organizationMode: null,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          ),
-        ]),
+      final testResource = Resource(
+        id: 'res1',
+        sourceId: 'source',
+        name: 'file1.jpg',
+        type: ResourceType.folder,
+        relativePath: 'file1.jpg',
+        organizationMode: null,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
       );
+      when(() => resources.getResourcesBySourceIdAndPaths('source', any()))
+          .thenAnswer((_) async => Ok([testResource]));
+      when(() => resources.getResourcesBySourceId('source'))
+          .thenAnswer((_) async => Ok([testResource]));
       when(
         () => tags.getTagsForResource('res1'),
       ).thenAnswer((_) async => const Ok([]));
@@ -330,6 +335,9 @@ void main() {
           FileEntry(name: 'file1.jpg', path: 'file1.jpg', isDirectory: false),
         ]),
       );
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', any()),
+      ).thenAnswer((_) async => const Ok([]));
       when(
         () => resources.getResourcesBySourceId('source'),
       ).thenAnswer((_) async => const Ok([]));

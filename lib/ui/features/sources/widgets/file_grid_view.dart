@@ -9,7 +9,7 @@ import '../../../../domain/models/tag.dart';
 ///
 /// 以网格形式显示文件和文件夹。
 /// 已入库项目显示入库角标，长按可编辑标签。
-class FileGridView extends StatelessWidget {
+class FileGridView extends StatefulWidget {
   const FileGridView({
     super.key,
     required this.entries,
@@ -20,6 +20,8 @@ class FileGridView extends StatelessWidget {
     this.resourceTags,
     this.onLongPressImported,
     this.thumbnailLoader,
+    this.hasMore = false,
+    this.onLoadMore,
   });
 
   final List<FileEntry> entries;
@@ -37,9 +39,55 @@ class FileGridView extends StatelessWidget {
   final ValueChanged<FileEntry>? onLongPressImported;
   final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
+  /// 是否还有更多条目可展示
+  final bool hasMore;
+
+  /// 滚动到底部时加载更多
+  final VoidCallback? onLoadMore;
+
+  @override
+  State<FileGridView> createState() => _FileGridViewState();
+}
+
+class _FileGridViewState extends State<FileGridView> {
+  final _scrollController = ScrollController();
+  bool _throttled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(FileGridView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.hasMore || widget.entries.length != oldWidget.entries.length) {
+      _throttled = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_throttled) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (widget.hasMore && widget.onLoadMore != null) {
+        _throttled = true;
+        widget.onLoadMore!();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (entries.isEmpty) {
+    if (widget.entries.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -56,7 +104,10 @@ class FileGridView extends StatelessWidget {
       );
     }
 
+    final showLoadMore = widget.hasMore;
+
     return GridView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 150,
@@ -64,28 +115,34 @@ class FileGridView extends StatelessWidget {
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
-      itemCount: entries.length,
+      itemCount: widget.entries.length + (showLoadMore ? 1 : 0),
       itemBuilder: (context, index) {
-        final entry = entries[index];
-        final isSelected = selectedEntries?.contains(entry.path) ?? false;
-        final isImported = importedPaths?.contains(entry.path) ?? false;
-        final tags = isImported ? (resourceTags?[entry.path] ?? []) : <Tag>[];
+        if (index >= widget.entries.length) {
+          return const SizedBox(height: 60);
+        }
+        final entry = widget.entries[index];
+        final isSelected =
+            widget.selectedEntries?.contains(entry.path) ?? false;
+        final isImported = widget.importedPaths?.contains(entry.path) ?? false;
+        final tags = isImported
+            ? (widget.resourceTags?[entry.path] ?? [])
+            : <Tag>[];
 
         return _FileGridItem(
           entry: entry,
           isSelected: isSelected,
           isImported: isImported,
           tags: tags,
-          onTap: onTap != null ? () => onTap?.call(entry) : null,
-          onLongPress: isImported && onLongPressImported != null
-              ? () => onLongPressImported?.call(entry)
-              : onToggleSelect != null
-              ? () => onToggleSelect?.call(entry)
+          onTap: widget.onTap != null ? () => widget.onTap?.call(entry) : null,
+          onLongPress: isImported && widget.onLongPressImported != null
+              ? () => widget.onLongPressImported?.call(entry)
+              : widget.onToggleSelect != null
+              ? () => widget.onToggleSelect?.call(entry)
               : null,
-          onToggleSelect: onToggleSelect != null
-              ? () => onToggleSelect?.call(entry)
+          onToggleSelect: widget.onToggleSelect != null
+              ? () => widget.onToggleSelect?.call(entry)
               : null,
-          thumbnailLoader: thumbnailLoader,
+          thumbnailLoader: widget.thumbnailLoader,
         );
       },
     );

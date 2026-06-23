@@ -5,6 +5,7 @@ import '../../../../data/repositories/tag_repository.dart';
 import '../../../../data/repositories/thumbnail_repository.dart';
 import '../../../../domain/core/result.dart';
 import '../../../../domain/models/resource.dart';
+import '../../../../domain/models/resource_query.dart';
 import '../../../../domain/models/tag.dart';
 import '../../../../domain/use_cases/filter_resources_by_tags_use_case.dart';
 import '../../../core/view_models/base_view_model.dart';
@@ -21,7 +22,7 @@ class BatchDeleteResult {
 
 /// 首页 ViewModel
 ///
-/// 监听可用资源列表，加载缩略图路径，管理收藏状态和筛选逻辑。
+/// 使用统一查询管线：标签筛选、搜索、排序、键集分页全部下推到 SQL。
 class HomeViewModel extends BaseViewModel {
   HomeViewModel({
     required this.resourceRepository,
@@ -29,115 +30,239 @@ class HomeViewModel extends BaseViewModel {
     required this.tagRepository,
     required this.filterResourcesByTags,
     String? initialTagId,
-  }) : _selectedTagIds = initialTagId == null ? {} : {initialTagId};
+  }) : _tagIds = initialTagId == null ? <String>{} : {initialTagId};
 
   final ResourceRepository resourceRepository;
   final ThumbnailRepository thumbnailRepository;
   final TagRepository tagRepository;
   final FilterResourcesByTagsUseCase filterResourcesByTags;
 
-  // 全量资源数据
-  List<Resource> _allResources = [];
-  final Map<String, String?> _allThumbnailPaths = {};
+  // ---- 分页状态 ----
 
-  // 筛选后的资源数据
   List<Resource> _resources = [];
   Map<String, String?> _thumbnailPaths = {};
+  String? _nextCursor;
+  bool _hasMore = false;
+  bool _isLoadingFirstPage = false;
+  bool _isLoadingMore = false;
+  String? _loadMoreError;
+  int _queryGeneration = 0;
 
-  // 收藏状态
+  // ---- 筛选状态 ----
+
+  final Set<String> _tagIds;
+  String _searchQuery = '';
+  bool _favoriteOnly = false;
+  bool get favoriteOnly => _favoriteOnly;
+
+  // ---- 收藏状态 ----
+
   Set<String> _favoriteResourceIds = {};
 
-  // 筛选状态
-  Set<String> _selectedTagIds;
-  String _searchQuery = '';
-  int? _filteredCount;
-  int? _totalCount;
+  // ---- 标签列表 ----
 
-  // 标签列表
   List<Tag> _tags = [];
   List<Tag> _customTags = [];
 
-  StreamSubscription<Result<List<Resource>>>? _subscription;
-  Timer? _searchDebounce;
-  int _filterGeneration = 0;
+  // ---- 计数 ----
 
-  // 多选状态
+  int? _totalCount;
+
+  // ---- 多选状态 ----
+
   bool _isMultiSelectMode = false;
   final Set<String> _selectedResourceIds = {};
+
+  // ---- 订阅 ----
+
+  StreamSubscription<Result<List<Resource>>>? _dbSubscription;
+  Timer? _searchDebounce;
+
+  // ---- Getters ----
 
   List<Resource> get resources => _resources;
   Map<String, String?> get thumbnailPaths => _thumbnailPaths;
   Set<String> get favoriteResourceIds => _favoriteResourceIds;
-  Set<String> get selectedTagIds => _selectedTagIds;
+  Set<String> get selectedTagIds => _tagIds;
   String get searchQuery => _searchQuery;
-  int? get filteredCount => _filteredCount;
   int? get totalCount => _totalCount;
   List<Tag> get tags => _tags;
   List<Tag> get customTags => _customTags;
-  bool get isAllSelected => _selectedTagIds.isEmpty;
-  bool get isFavoriteSelected => _selectedTagIds.contains(favoriteTagId);
+  bool get isAllSelected => _tagIds.isEmpty && !_favoriteOnly;
+  bool get isFavoriteSelected => _favoriteOnly;
   bool get hasActiveFilter =>
-      _selectedTagIds.isNotEmpty || _searchQuery.isNotEmpty;
+      _tagIds.isNotEmpty || _searchQuery.isNotEmpty || _favoriteOnly;
+
+  // 分页状态 getter
+  bool get hasMore => _hasMore;
+  bool get isLoadingFirstPage => _isLoadingFirstPage;
+  bool get isLoadingMore => _isLoadingMore;
+  String? get loadMoreError => _loadMoreError;
+  int get loadedCount => _resources.length;
+  String? get nextCursor => _nextCursor;
 
   // 多选状态 getter
   bool get isMultiSelectMode => _isMultiSelectMode;
-  Set<String> get selectedResourceIds =>
-      Set.unmodifiable(_selectedResourceIds);
+  Set<String> get selectedResourceIds => Set.unmodifiable(_selectedResourceIds);
   int get selectedCount => _selectedResourceIds.length;
   bool get isAllVisibleSelected =>
       _resources.isNotEmpty &&
       _resources.every((r) => _selectedResourceIds.contains(r.id));
 
-  /// 开始监听可用资源
+  /// 当前查询条件（用于生成下一页查询等）
+  ResourceQuery get _currentQuery => ResourceQuery(
+    searchQuery: _searchQuery,
+    tagIds: _tagIds.toList(),
+    favoriteOnly: _favoriteOnly,
+    pageSize: 50,
+  );
+
+  // ---- 生命周期 ----
+
+  /// 开始监听数据库变化
+  ///
+  /// 当资源或源状态变化时重新加载第一页。
+  /// TODO: 改为局部更新而非全量重置，避免丢弃用户已滚动加载的分页数据。
   void startWatching() {
-    _subscription?.cancel();
-    _subscription = resourceRepository.watchAvailableResources().listen((
+    _dbSubscription?.cancel();
+    _dbSubscription = resourceRepository.watchAvailableResources().listen((
       result,
     ) {
-      switch (result) {
-        case Ok(:final value):
-          _resources = value;
-          _loadThumbnails();
-          setResult(const Ok(null));
-        case Err(:final error):
-          setResult(Err(error));
+      if (result is Ok) {
+        _loadFirstPage();
       }
     });
   }
 
-  /// 手动加载（首次或重试）
-  Future<void> loadResources() async {
+  /// 手动加载首页
+  Future<void> loadFirstPage() => _loadFirstPage();
+
+  Future<void> _loadFirstPage() async {
+    _isLoadingFirstPage = true;
+    _loadMoreError = null;
+    _queryGeneration++;
+    final gen = _queryGeneration;
     startLoading();
 
-    final result = await resourceRepository.getAvailableResources(
-      pageSize: 100,
-    );
+    // 清除已有数据
+    _resources = [];
+    _thumbnailPaths = {};
+    _nextCursor = null;
+    _hasMore = false;
+    notifyListeners();
+
+    // 查询第一页
+    final result = await resourceRepository.queryResources(_currentQuery);
+    if (gen != _queryGeneration) return;
+
     switch (result) {
       case Ok(:final value):
-        _allResources = value;
-        _totalCount = value.length;
-        await _loadThumbnails();
-        await _loadFavorites();
-        await _loadTags();
-        await _applyFilter();
+        _resources = value.items;
+        _nextCursor = value.nextCursor;
+        _hasMore = value.hasMore;
+        _totalCount = value.totalCount;
+        await _loadThumbnailsForResources(_resources);
+        if (gen != _queryGeneration) return;
         setResult(const Ok(null));
       case Err(:final error):
         setResult(Err(error));
     }
+    _isLoadingFirstPage = false;
+    notifyListeners();
   }
 
-  /// 加载标签列表
-  Future<void> _loadTags() async {
-    final result = await tagRepository.getAllTags();
+  /// 加载下一页
+  Future<void> loadNextPage() async {
+    if (!_hasMore || _isLoadingMore || _nextCursor == null) return;
+
+    _isLoadingMore = true;
+    _loadMoreError = null;
+    _queryGeneration++;
+    final gen = _queryGeneration;
+    notifyListeners();
+
+    final nextQuery = _currentQuery.nextPage(
+      ResourceCursor.decode(_nextCursor!)!,
+    );
+    final result = await resourceRepository.queryResources(nextQuery);
+    if (gen != _queryGeneration) return;
+
     switch (result) {
       case Ok(:final value):
-        _tags = value;
-        _customTags = value.where((t) => !t.isBuiltIn).toList();
-        notifyListeners();
-      case Err():
-        break;
+        _resources = [..._resources, ...value.items];
+        _nextCursor = value.nextCursor;
+        _hasMore = value.hasMore;
+        await _loadThumbnailsForResources(value.items);
+        if (gen != _queryGeneration) return;
+      case Err(:final error):
+        _loadMoreError = error.message;
+    }
+    _isLoadingMore = false;
+    notifyListeners();
+  }
+
+  // ---- 缩略图 ----
+
+  /// 增量加载指定资源的缩略图
+  Future<void> _loadThumbnailsForResources(List<Resource> resources) async {
+    for (final r in resources) {
+      if (_thumbnailPaths.containsKey(r.id)) continue;
+      final result = await thumbnailRepository.get(r.id);
+      switch (result) {
+        case Ok(:final value):
+          _thumbnailPaths[r.id] = value;
+        case Err():
+          _thumbnailPaths[r.id] = null;
+      }
     }
   }
+
+  // ===== 筛选逻辑 =====
+
+  /// 选择标签（加入筛选）
+  Future<void> selectTag(String tagId) async {
+    _tagIds.add(tagId);
+    await _loadFirstPage();
+  }
+
+  /// 取消选择标签
+  Future<void> deselectTag(String tagId) async {
+    _tagIds.remove(tagId);
+    await _loadFirstPage();
+  }
+
+  /// 切换标签选择
+  Future<void> toggleTag(String tagId) async {
+    if (_tagIds.contains(tagId)) {
+      _tagIds.remove(tagId);
+    } else {
+      _tagIds.add(tagId);
+    }
+    await _loadFirstPage();
+  }
+
+  /// 选择全部（清除标签和收藏筛选）
+  Future<void> selectAll() async {
+    _tagIds.clear();
+    _favoriteOnly = false;
+    await _loadFirstPage();
+  }
+
+  /// 选择收藏
+  Future<void> selectFavorite() async {
+    _tagIds.clear();
+    _favoriteOnly = !_favoriteOnly;
+    await _loadFirstPage();
+  }
+
+  /// 设置搜索词（带防抖）
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), _loadFirstPage);
+  }
+
+  // ===== 收藏状态 =====
 
   /// 加载收藏状态
   Future<void> _loadFavorites() async {
@@ -149,6 +274,24 @@ class HomeViewModel extends BaseViewModel {
       case Err():
         break;
     }
+  }
+
+  /// 加载标签列表
+  Future<void> loadTags() async {
+    final result = await tagRepository.getAllTags();
+    switch (result) {
+      case Ok(:final value):
+        _tags = value;
+        _customTags = value.where((t) => !t.isBuiltIn).toList();
+        notifyListeners();
+      case Err():
+        break;
+    }
+  }
+
+  /// 初始化标签和收藏（首页首次加载后调用）
+  Future<void> loadInitialData() async {
+    await Future.wait([_loadFavorites(), loadTags()]);
   }
 
   /// 切换收藏状态
@@ -163,7 +306,13 @@ class HomeViewModel extends BaseViewModel {
       switch (result) {
         case Ok():
           _favoriteResourceIds.remove(resourceId);
-          await _applyFilter();
+          if (_favoriteOnly) {
+            _resources = _resources
+                .where((resource) => resource.id != resourceId)
+                .toList();
+            _thumbnailPaths.remove(resourceId);
+          }
+          notifyListeners();
         case Err():
           break;
       }
@@ -175,7 +324,7 @@ class HomeViewModel extends BaseViewModel {
       switch (result) {
         case Ok():
           _favoriteResourceIds.add(resourceId);
-          await _applyFilter();
+          notifyListeners();
         case Err():
           break;
       }
@@ -187,173 +336,20 @@ class HomeViewModel extends BaseViewModel {
     return _favoriteResourceIds.contains(resourceId);
   }
 
-  // ===== 筛选逻辑 =====
-
-  /// 选择标签（加入筛选）
-  Future<void> selectTag(String tagId) async {
-    _selectedTagIds.add(tagId);
-    await _applyFilter();
-  }
-
-  /// 取消选择标签（移除筛选）
-  Future<void> deselectTag(String tagId) async {
-    _selectedTagIds.remove(tagId);
-    await _applyFilter();
-  }
-
-  /// 切换标签选择状态
-  Future<void> toggleTag(String tagId) async {
-    if (_selectedTagIds.contains(tagId)) {
-      _selectedTagIds.remove(tagId);
-    } else {
-      _selectedTagIds.add(tagId);
-    }
-    await _applyFilter();
-  }
-
-  /// 选择全部（清除所有筛选）
-  Future<void> selectAll() async {
-    _selectedTagIds.clear();
-    await _applyFilter();
-  }
-
-  /// 选择收藏
-  Future<void> selectFavorite() async {
-    _selectedTagIds = {favoriteTagId};
-    await _applyFilter();
-  }
-
-  /// 设置搜索关键词
-  void setSearchQuery(String query) {
-    _searchQuery = query;
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), _applyFilter);
-  }
-
-  /// 应用筛选
-  Future<void> _applyFilter() async {
-    final generation = ++_filterGeneration;
-    List<Resource> filtered;
-
-    if (_selectedTagIds.isEmpty && _searchQuery.isEmpty) {
-      // 无筛选条件，显示全部
-      filtered = _allResources;
-      _filteredCount = _totalCount;
-    } else {
-      // 标签筛选
-      if (_selectedTagIds.isNotEmpty) {
-        final result = await filterResourcesByTags(_selectedTagIds);
-        switch (result) {
-          case Ok(:final value):
-            // 只保留当前可用资源
-            final availableIds = _allResources.map((r) => r.id).toSet();
-            filtered = value.where((r) => availableIds.contains(r.id)).toList();
-          case Err():
-            filtered = _allResources;
-        }
-      } else {
-        filtered = _allResources;
-      }
-
-      // 搜索筛选
-      if (_searchQuery.isNotEmpty) {
-        final query = _searchQuery.toLowerCase();
-        filtered = filtered.where((r) {
-          return r.name.toLowerCase().contains(query);
-        }).toList();
-      }
-
-      _filteredCount = filtered.length;
-    }
-
-    if (generation != _filterGeneration) return;
-    _resources = filtered;
-    final paths = await _loadThumbnailsForResources(filtered);
-    if (generation != _filterGeneration) return;
-    _thumbnailPaths = paths;
-    notifyListeners();
-  }
-
-  /// 加载指定资源列表的缩略图
-  Future<Map<String, String?>> _loadThumbnailsForResources(
-    List<Resource> resources,
-  ) async {
-    final paths = <String, String?>{};
-    for (final r in resources) {
-      if (_allThumbnailPaths.containsKey(r.id)) {
-        paths[r.id] = _allThumbnailPaths[r.id];
-      } else {
-        final result = await thumbnailRepository.get(r.id);
-        switch (result) {
-          case Ok(:final value):
-            paths[r.id] = value;
-            _allThumbnailPaths[r.id] = value;
-          case Err():
-            paths[r.id] = null;
-        }
-      }
-    }
-    return paths;
-  }
-
-  /// 加载所有资源的缩略图路径
-  Future<void> _loadThumbnails() async {
-    final paths = <String, String?>{};
-    for (final r in _resources) {
-      final result = await thumbnailRepository.get(r.id);
-      switch (result) {
-        case Ok(:final value):
-          paths[r.id] = value;
-        case Err():
-          paths[r.id] = null;
-      }
-    }
-    _thumbnailPaths = paths;
-    notifyListeners();
-  }
-
-  /// 获取分页资源（用于分页加载）
-  Future<Result<List<Resource>>> pageResources({
-    String? lastCreatedAt,
-    String? lastId,
-    required int pageSize,
-  }) {
-    return resourceRepository.getAvailableResources(
-      lastCreatedAt: lastCreatedAt,
-      lastId: lastId,
-      pageSize: pageSize,
-    );
-  }
-
-  @override
-  Future<void> retry() async {
-    await loadResources();
-  }
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _subscription?.cancel();
-    super.dispose();
-  }
-
   // ===== 多选模式 =====
 
-  /// 进入多选模式
   void enterMultiSelectMode() {
     _isMultiSelectMode = true;
     _selectedResourceIds.clear();
     notifyListeners();
   }
 
-  /// 退出多选模式
   void exitMultiSelectMode() {
     _isMultiSelectMode = false;
     _selectedResourceIds.clear();
     notifyListeners();
   }
 
-  /// 切换单个资源的选中状态
   void toggleResourceSelection(String id) {
     if (_selectedResourceIds.contains(id)) {
       _selectedResourceIds.remove(id);
@@ -363,7 +359,6 @@ class HomeViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// 全选 / 取消全选当前可见资源
   void toggleSelectAllVisible() {
     if (isAllVisibleSelected) {
       _selectedResourceIds.clear();
@@ -391,9 +386,19 @@ class HomeViewModel extends BaseViewModel {
 
     _selectedResourceIds.clear();
     exitMultiSelectMode();
-    // 刷新列表
-    await loadResources();
+    // 刷新第一页
+    await _loadFirstPage();
 
     return Ok(BatchDeleteResult(deleted: deleted, failed: failed));
+  }
+
+  @override
+  Future<void> retry() => _loadFirstPage();
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _dbSubscription?.cancel();
+    super.dispose();
   }
 }

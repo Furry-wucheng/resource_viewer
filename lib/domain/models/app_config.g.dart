@@ -19,6 +19,7 @@ _AppConfig _$AppConfigFromJson(Map<String, dynamic> json) => _AppConfig(
       DoublePageMode.auto,
   crossChapter: json['crossChapter'] as bool? ?? true,
   cacheLimitMB: (json['cacheLimitMB'] as num?)?.toInt() ?? 500,
+  thumbnailConcurrency: (json['thumbnailConcurrency'] as num?)?.toInt() ?? 4,
   autoSyncInterval:
       $enumDecodeNullable(
         _$AutoSyncIntervalEnumMap,
@@ -36,6 +37,7 @@ Map<String, dynamic> _$AppConfigToJson(_AppConfig instance) =>
       'doublePageMode': _$DoublePageModeEnumMap[instance.doublePageMode]!,
       'crossChapter': instance.crossChapter,
       'cacheLimitMB': instance.cacheLimitMB,
+      'thumbnailConcurrency': instance.thumbnailConcurrency,
       'autoSyncInterval': _$AutoSyncIntervalEnumMap[instance.autoSyncInterval]!,
       'updatedAt': instance.updatedAt.toIso8601String(),
     };

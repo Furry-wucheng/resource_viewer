@@ -9,7 +9,7 @@ import '../../../../domain/models/tag.dart';
 ///
 /// 以列表形式显示文件和文件夹。
 /// 已入库项目显示标签芯片，长按可编辑标签。
-class FileListView extends StatelessWidget {
+class FileListView extends StatefulWidget {
   const FileListView({
     super.key,
     required this.entries,
@@ -20,6 +20,8 @@ class FileListView extends StatelessWidget {
     this.resourceTags,
     this.onLongPressImported,
     this.thumbnailLoader,
+    this.hasMore = false,
+    this.onLoadMore,
   });
 
   final List<FileEntry> entries;
@@ -37,9 +39,55 @@ class FileListView extends StatelessWidget {
   final ValueChanged<FileEntry>? onLongPressImported;
   final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
+  /// 是否还有更多条目可展示
+  final bool hasMore;
+
+  /// 滚动到底部时加载更多
+  final VoidCallback? onLoadMore;
+
+  @override
+  State<FileListView> createState() => _FileListViewState();
+}
+
+class _FileListViewState extends State<FileListView> {
+  final _scrollController = ScrollController();
+  bool _throttled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(FileListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.hasMore || widget.entries.length != oldWidget.entries.length) {
+      _throttled = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_throttled) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (widget.hasMore && widget.onLoadMore != null) {
+        _throttled = true;
+        widget.onLoadMore!();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (entries.isEmpty) {
+    if (widget.entries.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -56,18 +104,27 @@ class FileListView extends StatelessWidget {
       );
     }
 
+    final showLoadMore = widget.hasMore;
+
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: entries.length,
+      itemCount: widget.entries.length + (showLoadMore ? 1 : 0),
       itemBuilder: (context, index) {
-        final entry = entries[index];
-        final isSelected = selectedEntries?.contains(entry.path) ?? false;
-        final isImported = importedPaths?.contains(entry.path) ?? false;
-        final tags = isImported ? (resourceTags?[entry.path] ?? []) : <Tag>[];
+        if (index >= widget.entries.length) {
+          return _buildBottomWidget();
+        }
+        final entry = widget.entries[index];
+        final isSelected =
+            widget.selectedEntries?.contains(entry.path) ?? false;
+        final isImported = widget.importedPaths?.contains(entry.path) ?? false;
+        final tags = isImported
+            ? (widget.resourceTags?[entry.path] ?? [])
+            : <Tag>[];
 
         return GestureDetector(
-          onSecondaryTap: isImported && onLongPressImported != null
-              ? () => onLongPressImported?.call(entry)
+          onSecondaryTap: isImported && widget.onLongPressImported != null
+              ? () => widget.onLongPressImported?.call(entry)
               : null,
           child: ListTile(
             leading: _buildIcon(entry, isImported),
@@ -77,17 +134,19 @@ class FileListView extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: _buildSubtitle(context, entry, tags),
-            trailing: onToggleSelect != null
+            trailing: widget.onToggleSelect != null
                 ? Checkbox(
                     value: isSelected,
-                    onChanged: (_) => onToggleSelect?.call(entry),
+                    onChanged: (_) => widget.onToggleSelect?.call(entry),
                   )
                 : null,
-            onTap: onTap != null ? () => onTap?.call(entry) : null,
-            onLongPress: isImported && onLongPressImported != null
-                ? () => onLongPressImported?.call(entry)
-                : onToggleSelect != null
-                ? () => onToggleSelect?.call(entry)
+            onTap: widget.onTap != null
+                ? () => widget.onTap?.call(entry)
+                : null,
+            onLongPress: isImported && widget.onLongPressImported != null
+                ? () => widget.onLongPressImported?.call(entry)
+                : widget.onToggleSelect != null
+                ? () => widget.onToggleSelect?.call(entry)
                 : null,
           ),
         );
@@ -123,7 +182,7 @@ class FileListView extends StatelessWidget {
 
   /// 构建预览（有缩略图加载器时尝试加载，否则显示图标）
   Widget _buildPreview(FileEntry entry) {
-    final loader = thumbnailLoader;
+    final loader = widget.thumbnailLoader;
     if (loader == null) return _getIcon(entry);
     return FutureBuilder<Uint8List?>(
       future: loader(entry),
@@ -264,5 +323,9 @@ class FileListView extends StatelessWidget {
   Color _parseColor(String hex) {
     final hexClean = hex.replaceFirst('#', '');
     return Color(int.parse('FF$hexClean', radix: 16));
+  }
+
+  Widget _buildBottomWidget() {
+    return const SizedBox(height: 60);
   }
 }

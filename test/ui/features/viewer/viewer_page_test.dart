@@ -3,13 +3,18 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'package:resource_viewer/data/repositories/settings_repository.dart';
+import 'package:resource_viewer/domain/core/result.dart';
+import 'package:resource_viewer/domain/models/app_config.dart';
 import 'package:resource_viewer/shared/content_provider/content_provider.dart';
 import 'package:resource_viewer/ui/features/viewer/viewer_page.dart';
 import 'package:resource_viewer/ui/features/viewer/widgets/slide_bar.dart';
 import 'package:resource_viewer/ui/features/viewer/widgets/viewer_toolbar.dart';
+import '../../../helpers/mock_factories.dart';
 
 // 1x1 最小 JPEG 字节
 final kMinimalJpeg = Uint8List.fromList([
@@ -367,24 +372,46 @@ class MockContentProvider extends Mock implements ContentProvider {}
 void main() {
   group('ViewerPage', () {
     late MockContentProvider mockProvider;
+    late MockSettingsRepository mockSettingsRepo;
+
+    AppConfig defaultConfig() => AppConfig(
+      id: 1,
+      themeMode: AppThemeMode.system,
+      pageDirection: PageDirection.rightToLeft,
+      doublePageMode: DoublePageMode.auto,
+      crossChapter: true,
+      cacheLimitMB: 500,
+      autoSyncInterval: AutoSyncInterval.off,
+      updatedAt: DateTime(2024),
+    );
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       mockProvider = MockContentProvider();
+      mockSettingsRepo = MockSettingsRepository();
       when(() => mockProvider.pageCount).thenReturn(3);
       when(
         () => mockProvider.loadPage(any()),
       ).thenAnswer((_) async => kMinimalJpeg);
       when(() => mockProvider.dispose()).thenAnswer((_) async {});
+      // 默认返回成功配置
+      when(() => mockSettingsRepo.getConfig())
+          .thenAnswer((_) async => Ok(defaultConfig()));
     });
 
     tearDown(() {
       // 不 reset，setUp 每次创建新实例
     });
 
-    Widget buildViewer() {
-      return MaterialApp(
-        home: ViewerPage(title: 'Test Resource', contentProvider: mockProvider),
+    Widget buildViewer({AppConfig? config}) {
+      return Provider<SettingsRepository>.value(
+        value: mockSettingsRepo,
+        child: MaterialApp(
+          home: ViewerPage(
+            title: 'Test Resource',
+            contentProvider: mockProvider,
+          ),
+        ),
       );
     }
 
@@ -492,7 +519,11 @@ void main() {
     });
 
     testWidgets('资源库翻页使用跟手 PageView 动画', (tester) async {
-      SharedPreferences.setMockInitialValues({'page_direction': 1});
+      when(() => mockSettingsRepo.getConfig()).thenAnswer(
+        (_) async => Ok(defaultConfig().copyWith(
+          pageDirection: PageDirection.leftToRight,
+        )),
+      );
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
 
@@ -522,7 +553,11 @@ void main() {
       expect(pageView.reverse, isFalse);
 
       await tester.pumpWidget(const SizedBox.shrink());
-      SharedPreferences.setMockInitialValues({'page_direction': 1});
+      when(() => mockSettingsRepo.getConfig()).thenAnswer(
+        (_) async => Ok(defaultConfig().copyWith(
+          pageDirection: PageDirection.leftToRight,
+        )),
+      );
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
       pageView = tester.widget<PageView>(
@@ -550,7 +585,11 @@ void main() {
 
     testWidgets('宽屏双页模式按首页单页后每次两页显示', (tester) async {
       when(() => mockProvider.pageCount).thenReturn(5);
-      SharedPreferences.setMockInitialValues({'double_page_mode': 2});
+      when(() => mockSettingsRepo.getConfig()).thenAnswer(
+        (_) async => Ok(defaultConfig().copyWith(
+          doublePageMode: DoublePageMode.double,
+        )),
+      );
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1200, 800);
       addTearDown(tester.view.resetPhysicalSize);
@@ -584,7 +623,11 @@ void main() {
 
     testWidgets('双页模式无法配对的末页居中单独显示', (tester) async {
       when(() => mockProvider.pageCount).thenReturn(4);
-      SharedPreferences.setMockInitialValues({'double_page_mode': 2});
+      when(() => mockSettingsRepo.getConfig()).thenAnswer(
+        (_) async => Ok(defaultConfig().copyWith(
+          doublePageMode: DoublePageMode.double,
+        )),
+      );
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1200, 800);
       addTearDown(tester.view.resetPhysicalSize);
@@ -730,8 +773,11 @@ void main() {
         when(() => provider.dispose()).thenAnswer((_) async {});
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ViewerPage(title: 'Viewer $i', contentProvider: provider),
+          Provider<SettingsRepository>.value(
+            value: mockSettingsRepo,
+            child: MaterialApp(
+              home: ViewerPage(title: 'Viewer $i', contentProvider: provider),
+            ),
           ),
         );
         await tester.pumpAndSettle();

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/filesystem_repository.dart';
 import '../../../data/repositories/resource_repository.dart';
+import '../../../data/repositories/settings_repository.dart';
 import '../../../data/repositories/tag_repository.dart';
 import '../../../data/repositories/thumbnail_repository.dart';
 import '../../../domain/core/result.dart';
@@ -37,24 +38,38 @@ class FileBrowserPage extends StatefulWidget {
 }
 
 class _FileBrowserPageState extends State<FileBrowserPage> {
-  late final Future<ViewMode> _viewModeFuture;
+  late final Future<({ViewMode mode, int concurrency})> _initFuture;
 
   @override
   void initState() {
     super.initState();
-    _viewModeFuture = FileBrowserViewModel.loadViewMode();
+    final settingsRepo = context.read<SettingsRepository>();
+    _initFuture = _loadInitData(settingsRepo);
+  }
+
+  Future<({ViewMode mode, int concurrency})> _loadInitData(
+    SettingsRepository settingsRepo,
+  ) async {
+    final mode = await FileBrowserViewModel.loadViewMode();
+    final configResult = await settingsRepo.getConfig();
+    final concurrency = switch (configResult) {
+      Ok(:final value) => value.thumbnailConcurrency,
+      Err() => 4, // fallback default
+    };
+    return (mode: mode, concurrency: concurrency);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<ViewMode>(
-      future: _viewModeFuture,
+    return FutureBuilder<({ViewMode mode, int concurrency})>(
+      future: _initFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
+        final (:mode, :concurrency) = snapshot.data!;
         return ChangeNotifierProvider(
           create: (context) => FileBrowserViewModel(
             sourceId: widget.sourceId,
@@ -64,7 +79,8 @@ class _FileBrowserPageState extends State<FileBrowserPage> {
             tagRepository: context.read<TagRepository>(),
             thumbnailRepository: context.read<ThumbnailRepository>(),
             fileSourceFactory: context.read<FileSourceFactory>(),
-            initialViewMode: snapshot.data!,
+            thumbnailConcurrency: concurrency,
+            initialViewMode: mode,
           )..loadDirectory(''),
           child: const _FileBrowserView(),
         );
@@ -244,7 +260,7 @@ class _FileBrowserView extends StatelessWidget {
       case UiState.success:
         return vm.viewMode == ViewMode.list
             ? FileListView(
-                entries: vm.entries,
+                entries: vm.visibleEntries,
                 onTap: (entry) => _handleTap(context, vm, entry),
                 selectedEntries: vm.isMultiSelectMode ? vm.selectedPaths : null,
                 onToggleSelect: vm.isMultiSelectMode
@@ -255,9 +271,11 @@ class _FileBrowserView extends StatelessWidget {
                 onLongPressImported: (entry) =>
                     _editResourceTags(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
+                hasMore: vm.visibleCount < vm.entries.length,
+                onLoadMore: vm.loadMoreEntries,
               )
             : FileGridView(
-                entries: vm.entries,
+                entries: vm.visibleEntries,
                 onTap: (entry) => _handleTap(context, vm, entry),
                 selectedEntries: vm.isMultiSelectMode ? vm.selectedPaths : null,
                 onToggleSelect: vm.isMultiSelectMode
@@ -268,6 +286,8 @@ class _FileBrowserView extends StatelessWidget {
                 onLongPressImported: (entry) =>
                     _editResourceTags(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
+                hasMore: vm.visibleCount < vm.entries.length,
+                onLoadMore: vm.loadMoreEntries,
               );
     }
   }

@@ -23,6 +23,8 @@ class AppConfig extends Table {
 
   IntColumn get cacheLimitMB => integer().withDefault(const Constant(500))();
 
+  IntColumn get thumbnailConcurrency => integer().withDefault(const Constant(4))();
+
   TextColumn get autoSyncInterval => textEnum<AutoSyncInterval>().withDefault(
     Constant(AutoSyncInterval.off.name),
   )();

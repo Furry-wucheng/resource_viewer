@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
+import 'package:resource_viewer/data/repositories/settings_repository.dart';
 import 'package:resource_viewer/data/repositories/source_repository.dart';
 import 'package:resource_viewer/data/repositories/filesystem_repository.dart';
 import 'package:resource_viewer/domain/core/result.dart';
+import 'package:resource_viewer/domain/models/app_config.dart';
 import 'package:resource_viewer/domain/models/file_entry.dart';
 import 'package:resource_viewer/domain/models/source.dart';
 import 'package:resource_viewer/shared/file_source/file_source.dart';
@@ -21,6 +23,8 @@ class _MockFileSourceFactory extends Mock implements FileSourceFactory {}
 class _MockFilesystemRepository extends Mock implements FilesystemRepository {}
 
 class _MockFileSource extends Mock implements FileSource {}
+
+class _MockSettingsRepository extends Mock implements SettingsRepository {}
 
 class _RouteObserver extends NavigatorObserver {
   int pushes = 0;
@@ -45,6 +49,7 @@ void main() {
     final fileSourceFactory = _MockFileSourceFactory();
     final filesystemRepository = _MockFilesystemRepository();
     final fileSource = _MockFileSource();
+    final settingsRepo = _MockSettingsRepository();
     final observer = _RouteObserver();
     final now = DateTime(2026);
     final source = Source(
@@ -80,6 +85,18 @@ void main() {
         'AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
       ),
     );
+    when(() => settingsRepo.getConfig()).thenAnswer(
+      (_) async => Ok(AppConfig(
+        id: 1,
+        themeMode: AppThemeMode.system,
+        pageDirection: PageDirection.rightToLeft,
+        doublePageMode: DoublePageMode.auto,
+        crossChapter: true,
+        cacheLimitMB: 500,
+        autoSyncInterval: AutoSyncInterval.off,
+        updatedAt: now,
+      )),
+    );
 
     await tester.pumpWidget(
       MultiProvider(
@@ -87,6 +104,7 @@ void main() {
           Provider<SourceRepository>.value(value: sourceRepository),
           Provider<FileSourceFactory>.value(value: fileSourceFactory),
           Provider<FilesystemRepository>.value(value: filesystemRepository),
+          Provider<SettingsRepository>.value(value: settingsRepo),
         ],
         child: MaterialApp(
           navigatorObservers: [observer],

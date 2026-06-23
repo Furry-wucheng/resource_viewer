@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -13,12 +15,58 @@ import '../../../../domain/models/file_entry.dart';
 import '../../../../domain/models/resource.dart';
 import '../../../../domain/models/tag.dart';
 import '../../../../shared/file_source/file_source_factory.dart';
+import '../../../../shared/file_source/smb_file_source.dart';
 import '../../../core/view_models/base_view_model.dart';
 
 /// 文件浏览器视图模式
 enum ViewMode { list, grid }
 
 const _kViewModeKey = 'file_browser_view_mode';
+
+// ============================================================================
+// 缩略图加载池 — 限制并发，防止同时大量 thumbnailFor 导致 IO/CPU/内存尖峰
+// ============================================================================
+
+/// 带并发上限的异步任务池
+class _ThumbnailPool {
+  _ThumbnailPool(this.maxConcurrent);
+
+  final int maxConcurrent;
+  int _running = 0;
+  final _queue = <void Function()>[];
+
+  /// 提交任务；返回的 Future 在任务完成时 resolve（保留错误语义）
+  Future<T> schedule<T>(Future<T> Function() task) {
+    final completer = Completer<T>.sync();
+    _queue.add(() async {
+      _running++;
+      try {
+        final result = await task();
+        completer.complete(result);
+      } catch (e) {
+        completer.completeError(e);
+      } finally {
+        _running--;
+        _runNext();
+      }
+    });
+    _runNext();
+    return completer.future;
+  }
+
+  void _runNext() {
+    while (_running < maxConcurrent && _queue.isNotEmpty) {
+      _queue.removeAt(0)();
+    }
+  }
+
+  /// 清空等待队列（不取消进行中任务）
+  void drainPending() => _queue.clear();
+}
+
+// ============================================================================
+// ViewModel
+// ============================================================================
 
 /// 文件浏览器 ViewModel
 class FileBrowserViewModel extends BaseViewModel {
@@ -30,6 +78,7 @@ class FileBrowserViewModel extends BaseViewModel {
     required this.tagRepository,
     required this.thumbnailRepository,
     required this.fileSourceFactory,
+    this.thumbnailConcurrency = 4,
     ViewMode initialViewMode = ViewMode.list,
   }) : _viewMode = initialViewMode;
 
@@ -51,7 +100,76 @@ class FileBrowserViewModel extends BaseViewModel {
   final ThumbnailRepository thumbnailRepository;
   final FileSourceFactory fileSourceFactory;
   final _uuid = const Uuid();
-  final Map<String, Future<Uint8List?>> _thumbnailFutures = {};
+
+  // ---- 缩略图加载管线 ----
+
+  /// 缩略图加载并发数（由设置页传入，1~8，默认 4）
+  final int thumbnailConcurrency;
+
+  /// 已完成缩略图缓存上限（避免 rebuild 时重复加载；超出时淘汰最旧项）
+  static const _maxCompletedCache = 256;
+
+  /// 仅保留进行中的 Future（用于去重，completed 后移除避免持有 Uint8List）
+  final Map<String, Future<Uint8List?>> _inFlightThumbnails = {};
+
+  /// 已完成缩略图缓存（bounded，仅用于 rebuild 快速返回）
+  final Map<String, Uint8List?> _completedThumbnails = {};
+  int _thumbnailGeneration = 0;
+
+  late final _thumbnailPool = _ThumbnailPool(_poolConcurrency);
+
+  int get _poolConcurrency {
+    if (!_isRemote) return thumbnailConcurrency;
+    // 远程源（SMB）减半以避免压垮连接，最少保持 1 并发
+    return (thumbnailConcurrency / 2).ceil().clamp(1, thumbnailConcurrency);
+  }
+
+  bool get _isRemote {
+    final source = fileSourceFactory.get(sourceId);
+    if (source == null) return false;
+    // SMB 等远程源需要更低并发
+    return source is SmbFileSource;
+  }
+
+  Future<Uint8List?> thumbnailFor(FileEntry entry) {
+    // 1) 已完成缓存命中 → 同步返回
+    if (_completedThumbnails.containsKey(entry.path)) {
+      return Future.value(_completedThumbnails[entry.path]);
+    }
+    // 2) 进行中 → 返回同一 Future 去重
+    if (_inFlightThumbnails.containsKey(entry.path)) {
+      return _inFlightThumbnails[entry.path]!;
+    }
+    // 3) 通过并发池提交新任务
+    final generation = _thumbnailGeneration;
+    final future = _thumbnailPool.schedule(() async {
+      final fileSource = fileSourceFactory.get(sourceId);
+      if (fileSource == null) return null;
+      return switch (await thumbnailRepository.preview(fileSource, entry)) {
+        Ok(:final value) => value,
+        Err() => null,
+      };
+    });
+    _inFlightThumbnails[entry.path] = future;
+    // 完成后移入 completed cache，同时从 in-flight 移除
+    future.then((result) {
+      if (generation != _thumbnailGeneration) return;
+      _inFlightThumbnails.remove(entry.path);
+      _completedThumbnails[entry.path] = result;
+      // Bounded cache：超出上限时淘汰最早项
+      while (_completedThumbnails.length > _maxCompletedCache) {
+        _completedThumbnails.remove(_completedThumbnails.keys.first);
+      }
+    });
+    return future;
+  }
+
+  void _clearThumbnailState() {
+    _thumbnailGeneration++;
+    _thumbnailPool.drainPending();
+    _inFlightThumbnails.clear();
+    _completedThumbnails.clear();
+  }
 
   /// 当前路径（相对于源根目录）
   String _currentPath = '';
@@ -64,17 +182,6 @@ class FileBrowserViewModel extends BaseViewModel {
   /// 当前目录下的文件列表
   List<FileEntry> _entries = [];
   List<FileEntry> get entries => _entries;
-
-  Future<Uint8List?> thumbnailFor(FileEntry entry) {
-    return _thumbnailFutures.putIfAbsent(entry.path, () async {
-      final fileSource = fileSourceFactory.get(sourceId);
-      if (fileSource == null) return null;
-      return switch (await thumbnailRepository.preview(fileSource, entry)) {
-        Ok(:final value) => value,
-        Err() => null,
-      };
-    });
-  }
 
   /// 视图模式
   ViewMode _viewMode;
@@ -118,6 +225,9 @@ class FileBrowserViewModel extends BaseViewModel {
     startLoading();
     _currentPath = path;
     _updateBreadcrumbs(path);
+    // 切换目录时清理缩略图状态：清空队列 + 释放已缓存字节
+    _clearThumbnailState();
+    _visibleCount = _initialVisibleCount;
 
     final result = await filesystemRepository.listDirectory(sourceId, path);
     switch (result) {
@@ -186,20 +296,57 @@ class FileBrowserViewModel extends BaseViewModel {
     }
   }
 
-  /// 加载已入库的资源路径、ID 映射和标签
+  /// 加载当前目录的入库状态（仅查询当前目录条目，避免加载全源）
   Future<void> _loadImportedPaths() async {
-    final result = await resourceRepository.getResourcesBySourceId(sourceId);
+    final currentPaths = _entries.map((e) => e.path).toList();
+    if (currentPaths.isEmpty) {
+      _importedPaths = {};
+      _pathToResourceId = {};
+      _resourceTags = {};
+      return;
+    }
+
+    final result = await resourceRepository.getResourcesBySourceIdAndPaths(
+      sourceId,
+      currentPaths,
+    );
     switch (result) {
       case Ok(:final value):
         _importedPaths = value.map((r) => r.relativePath).toSet();
         _pathToResourceId = {for (final r in value) r.relativePath: r.id};
-        // 加载每个资源的标签
         await _loadResourceTags(value.map((r) => r.id).toList());
       case Err():
         _importedPaths = {};
         _pathToResourceId = {};
         _resourceTags = {};
     }
+  }
+
+  /// 可见条目数量（用于大目录分批渲染）
+  static const _initialVisibleCount = 150;
+  static const _visibleIncrement = 150;
+  int _visibleCount = _initialVisibleCount;
+  int get visibleCount => _visibleCount;
+
+  /// 获取当前可见条目
+  List<FileEntry> get visibleEntries => _entries.length <= _visibleCount
+      ? _entries
+      : _entries.sublist(0, _visibleCount);
+
+  /// 加载更多可见条目
+  void loadMoreEntries() {
+    if (_visibleCount >= _entries.length) return;
+    _visibleCount = (_visibleCount + _visibleIncrement).clamp(
+      0,
+      _entries.length,
+    );
+    notifyListeners();
+  }
+
+  /// 手动刷新当前目录（绕过 TTL 缓存）
+  Future<void> refreshCurrentDirectory() async {
+    filesystemRepository.invalidateCache(sourceId);
+    await loadDirectory(_currentPath);
   }
 
   /// 加载资源标签

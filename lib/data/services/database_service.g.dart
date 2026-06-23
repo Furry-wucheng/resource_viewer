@@ -2450,6 +2450,17 @@ class $AppConfigTable extends AppConfig
     requiredDuringInsert: false,
     defaultValue: const Constant(500),
   );
+  static const VerificationMeta _thumbnailConcurrencyMeta =
+      const VerificationMeta('thumbnailConcurrency');
+  @override
+  late final GeneratedColumn<int> thumbnailConcurrency = GeneratedColumn<int>(
+    'thumbnail_concurrency',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(4),
+  );
   @override
   late final GeneratedColumnWithTypeConverter<AutoSyncInterval, String>
   autoSyncInterval = GeneratedColumn<String>(
@@ -2480,6 +2491,7 @@ class $AppConfigTable extends AppConfig
     doublePageMode,
     crossChapter,
     cacheLimitMB,
+    thumbnailConcurrency,
     autoSyncInterval,
     updatedAt,
   ];
@@ -2513,6 +2525,15 @@ class $AppConfigTable extends AppConfig
         cacheLimitMB.isAcceptableOrUnknown(
           data['cache_limit_m_b']!,
           _cacheLimitMBMeta,
+        ),
+      );
+    }
+    if (data.containsKey('thumbnail_concurrency')) {
+      context.handle(
+        _thumbnailConcurrencyMeta,
+        thumbnailConcurrency.isAcceptableOrUnknown(
+          data['thumbnail_concurrency']!,
+          _thumbnailConcurrencyMeta,
         ),
       );
     }
@@ -2561,6 +2582,10 @@ class $AppConfigTable extends AppConfig
         DriftSqlType.int,
         data['${effectivePrefix}cache_limit_m_b'],
       )!,
+      thumbnailConcurrency: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}thumbnail_concurrency'],
+      )!,
       autoSyncInterval: $AppConfigTable.$converterautoSyncInterval.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -2602,6 +2627,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
   final DoublePageMode doublePageMode;
   final bool crossChapter;
   final int cacheLimitMB;
+  final int thumbnailConcurrency;
   final AutoSyncInterval autoSyncInterval;
   final DateTime updatedAt;
   const AppConfigRow({
@@ -2611,6 +2637,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
     required this.doublePageMode,
     required this.crossChapter,
     required this.cacheLimitMB,
+    required this.thumbnailConcurrency,
     required this.autoSyncInterval,
     required this.updatedAt,
   });
@@ -2635,6 +2662,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
     }
     map['cross_chapter'] = Variable<bool>(crossChapter);
     map['cache_limit_m_b'] = Variable<int>(cacheLimitMB);
+    map['thumbnail_concurrency'] = Variable<int>(thumbnailConcurrency);
     {
       map['auto_sync_interval'] = Variable<String>(
         $AppConfigTable.$converterautoSyncInterval.toSql(autoSyncInterval),
@@ -2652,6 +2680,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
       doublePageMode: Value(doublePageMode),
       crossChapter: Value(crossChapter),
       cacheLimitMB: Value(cacheLimitMB),
+      thumbnailConcurrency: Value(thumbnailConcurrency),
       autoSyncInterval: Value(autoSyncInterval),
       updatedAt: Value(updatedAt),
     );
@@ -2675,6 +2704,9 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
       ),
       crossChapter: serializer.fromJson<bool>(json['crossChapter']),
       cacheLimitMB: serializer.fromJson<int>(json['cacheLimitMB']),
+      thumbnailConcurrency: serializer.fromJson<int>(
+        json['thumbnailConcurrency'],
+      ),
       autoSyncInterval: $AppConfigTable.$converterautoSyncInterval.fromJson(
         serializer.fromJson<String>(json['autoSyncInterval']),
       ),
@@ -2697,6 +2729,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
       ),
       'crossChapter': serializer.toJson<bool>(crossChapter),
       'cacheLimitMB': serializer.toJson<int>(cacheLimitMB),
+      'thumbnailConcurrency': serializer.toJson<int>(thumbnailConcurrency),
       'autoSyncInterval': serializer.toJson<String>(
         $AppConfigTable.$converterautoSyncInterval.toJson(autoSyncInterval),
       ),
@@ -2711,6 +2744,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
     DoublePageMode? doublePageMode,
     bool? crossChapter,
     int? cacheLimitMB,
+    int? thumbnailConcurrency,
     AutoSyncInterval? autoSyncInterval,
     DateTime? updatedAt,
   }) => AppConfigRow(
@@ -2720,6 +2754,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
     doublePageMode: doublePageMode ?? this.doublePageMode,
     crossChapter: crossChapter ?? this.crossChapter,
     cacheLimitMB: cacheLimitMB ?? this.cacheLimitMB,
+    thumbnailConcurrency: thumbnailConcurrency ?? this.thumbnailConcurrency,
     autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2739,6 +2774,9 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
       cacheLimitMB: data.cacheLimitMB.present
           ? data.cacheLimitMB.value
           : this.cacheLimitMB,
+      thumbnailConcurrency: data.thumbnailConcurrency.present
+          ? data.thumbnailConcurrency.value
+          : this.thumbnailConcurrency,
       autoSyncInterval: data.autoSyncInterval.present
           ? data.autoSyncInterval.value
           : this.autoSyncInterval,
@@ -2755,6 +2793,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
           ..write('doublePageMode: $doublePageMode, ')
           ..write('crossChapter: $crossChapter, ')
           ..write('cacheLimitMB: $cacheLimitMB, ')
+          ..write('thumbnailConcurrency: $thumbnailConcurrency, ')
           ..write('autoSyncInterval: $autoSyncInterval, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2769,6 +2808,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
     doublePageMode,
     crossChapter,
     cacheLimitMB,
+    thumbnailConcurrency,
     autoSyncInterval,
     updatedAt,
   );
@@ -2782,6 +2822,7 @@ class AppConfigRow extends DataClass implements Insertable<AppConfigRow> {
           other.doublePageMode == this.doublePageMode &&
           other.crossChapter == this.crossChapter &&
           other.cacheLimitMB == this.cacheLimitMB &&
+          other.thumbnailConcurrency == this.thumbnailConcurrency &&
           other.autoSyncInterval == this.autoSyncInterval &&
           other.updatedAt == this.updatedAt);
 }
@@ -2793,6 +2834,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
   final Value<DoublePageMode> doublePageMode;
   final Value<bool> crossChapter;
   final Value<int> cacheLimitMB;
+  final Value<int> thumbnailConcurrency;
   final Value<AutoSyncInterval> autoSyncInterval;
   final Value<DateTime> updatedAt;
   const AppConfigCompanion({
@@ -2802,6 +2844,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
     this.doublePageMode = const Value.absent(),
     this.crossChapter = const Value.absent(),
     this.cacheLimitMB = const Value.absent(),
+    this.thumbnailConcurrency = const Value.absent(),
     this.autoSyncInterval = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -2812,6 +2855,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
     this.doublePageMode = const Value.absent(),
     this.crossChapter = const Value.absent(),
     this.cacheLimitMB = const Value.absent(),
+    this.thumbnailConcurrency = const Value.absent(),
     this.autoSyncInterval = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -2822,6 +2866,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
     Expression<String>? doublePageMode,
     Expression<bool>? crossChapter,
     Expression<int>? cacheLimitMB,
+    Expression<int>? thumbnailConcurrency,
     Expression<String>? autoSyncInterval,
     Expression<DateTime>? updatedAt,
   }) {
@@ -2832,6 +2877,8 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
       if (doublePageMode != null) 'double_page_mode': doublePageMode,
       if (crossChapter != null) 'cross_chapter': crossChapter,
       if (cacheLimitMB != null) 'cache_limit_m_b': cacheLimitMB,
+      if (thumbnailConcurrency != null)
+        'thumbnail_concurrency': thumbnailConcurrency,
       if (autoSyncInterval != null) 'auto_sync_interval': autoSyncInterval,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -2844,6 +2891,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
     Value<DoublePageMode>? doublePageMode,
     Value<bool>? crossChapter,
     Value<int>? cacheLimitMB,
+    Value<int>? thumbnailConcurrency,
     Value<AutoSyncInterval>? autoSyncInterval,
     Value<DateTime>? updatedAt,
   }) {
@@ -2854,6 +2902,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
       doublePageMode: doublePageMode ?? this.doublePageMode,
       crossChapter: crossChapter ?? this.crossChapter,
       cacheLimitMB: cacheLimitMB ?? this.cacheLimitMB,
+      thumbnailConcurrency: thumbnailConcurrency ?? this.thumbnailConcurrency,
       autoSyncInterval: autoSyncInterval ?? this.autoSyncInterval,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -2886,6 +2935,9 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
     if (cacheLimitMB.present) {
       map['cache_limit_m_b'] = Variable<int>(cacheLimitMB.value);
     }
+    if (thumbnailConcurrency.present) {
+      map['thumbnail_concurrency'] = Variable<int>(thumbnailConcurrency.value);
+    }
     if (autoSyncInterval.present) {
       map['auto_sync_interval'] = Variable<String>(
         $AppConfigTable.$converterautoSyncInterval.toSql(
@@ -2908,6 +2960,7 @@ class AppConfigCompanion extends UpdateCompanion<AppConfigRow> {
           ..write('doublePageMode: $doublePageMode, ')
           ..write('crossChapter: $crossChapter, ')
           ..write('cacheLimitMB: $cacheLimitMB, ')
+          ..write('thumbnailConcurrency: $thumbnailConcurrency, ')
           ..write('autoSyncInterval: $autoSyncInterval, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4704,6 +4757,7 @@ typedef $$AppConfigTableCreateCompanionBuilder =
       Value<DoublePageMode> doublePageMode,
       Value<bool> crossChapter,
       Value<int> cacheLimitMB,
+      Value<int> thumbnailConcurrency,
       Value<AutoSyncInterval> autoSyncInterval,
       Value<DateTime> updatedAt,
     });
@@ -4715,6 +4769,7 @@ typedef $$AppConfigTableUpdateCompanionBuilder =
       Value<DoublePageMode> doublePageMode,
       Value<bool> crossChapter,
       Value<int> cacheLimitMB,
+      Value<int> thumbnailConcurrency,
       Value<AutoSyncInterval> autoSyncInterval,
       Value<DateTime> updatedAt,
     });
@@ -4758,6 +4813,11 @@ class $$AppConfigTableFilterComposer
 
   ColumnFilters<int> get cacheLimitMB => $composableBuilder(
     column: $table.cacheLimitMB,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get thumbnailConcurrency => $composableBuilder(
+    column: $table.thumbnailConcurrency,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4812,6 +4872,11 @@ class $$AppConfigTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get thumbnailConcurrency => $composableBuilder(
+    column: $table.thumbnailConcurrency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get autoSyncInterval => $composableBuilder(
     column: $table.autoSyncInterval,
     builder: (column) => ColumnOrderings(column),
@@ -4857,6 +4922,11 @@ class $$AppConfigTableAnnotationComposer
 
   GeneratedColumn<int> get cacheLimitMB => $composableBuilder(
     column: $table.cacheLimitMB,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get thumbnailConcurrency => $composableBuilder(
+    column: $table.thumbnailConcurrency,
     builder: (column) => column,
   );
 
@@ -4907,6 +4977,7 @@ class $$AppConfigTableTableManager
                 Value<DoublePageMode> doublePageMode = const Value.absent(),
                 Value<bool> crossChapter = const Value.absent(),
                 Value<int> cacheLimitMB = const Value.absent(),
+                Value<int> thumbnailConcurrency = const Value.absent(),
                 Value<AutoSyncInterval> autoSyncInterval = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => AppConfigCompanion(
@@ -4916,6 +4987,7 @@ class $$AppConfigTableTableManager
                 doublePageMode: doublePageMode,
                 crossChapter: crossChapter,
                 cacheLimitMB: cacheLimitMB,
+                thumbnailConcurrency: thumbnailConcurrency,
                 autoSyncInterval: autoSyncInterval,
                 updatedAt: updatedAt,
               ),
@@ -4927,6 +4999,7 @@ class $$AppConfigTableTableManager
                 Value<DoublePageMode> doublePageMode = const Value.absent(),
                 Value<bool> crossChapter = const Value.absent(),
                 Value<int> cacheLimitMB = const Value.absent(),
+                Value<int> thumbnailConcurrency = const Value.absent(),
                 Value<AutoSyncInterval> autoSyncInterval = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => AppConfigCompanion.insert(
@@ -4936,6 +5009,7 @@ class $$AppConfigTableTableManager
                 doublePageMode: doublePageMode,
                 crossChapter: crossChapter,
                 cacheLimitMB: cacheLimitMB,
+                thumbnailConcurrency: thumbnailConcurrency,
                 autoSyncInterval: autoSyncInterval,
                 updatedAt: updatedAt,
               ),

@@ -20,6 +20,7 @@ abstract class AppConfig with _$AppConfig {
     @Default(DoublePageMode.auto) DoublePageMode doublePageMode,
     @Default(true) bool crossChapter,
     @Default(500) int cacheLimitMB,
+    @Default(4) int thumbnailConcurrency,
     @Default(AutoSyncInterval.off) AutoSyncInterval autoSyncInterval,
     required DateTime updatedAt,
   }) = _AppConfig;

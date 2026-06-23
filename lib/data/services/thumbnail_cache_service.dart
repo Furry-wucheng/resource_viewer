@@ -123,6 +123,9 @@ class ThumbnailCacheService {
     await _removeFromIndex(resourceId);
   });
 
+  /// 获取缓存目录路径（公开，供设置页展示）
+  Future<String> getCacheDirectory() => _thumbDir;
+
   /// 清理所有缓存
   Future<void> clearCache() => _runExclusive(() async {
     final dir = Directory(await _thumbDir);
