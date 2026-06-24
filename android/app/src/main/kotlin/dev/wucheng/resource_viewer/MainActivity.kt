@@ -1,4 +1,4 @@
-package work.wucheng.resource_viewer
+package dev.wucheng.resource_viewer
 
 import io.flutter.embedding.android.FlutterActivity
 

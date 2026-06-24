@@ -9,6 +9,7 @@ class VideoProgressBar extends StatelessWidget {
     super.key,
     required this.player,
     this.positionOverride,
+    this.durationOverride,
     this.onScrubStart,
     this.onScrubUpdate,
     this.onScrubEnd,
@@ -16,6 +17,7 @@ class VideoProgressBar extends StatelessWidget {
 
   final Player player;
   final Duration? positionOverride;
+  final Duration? durationOverride;
   final ValueChanged<Duration>? onScrubStart;
   final ValueChanged<Duration>? onScrubUpdate;
   final ValueChanged<Duration>? onScrubEnd;
@@ -32,7 +34,14 @@ class VideoProgressBar extends StatelessWidget {
                 positionOverride ??
                 positionSnapshot.data ??
                 player.state.position;
-            final duration = durationSnapshot.data ?? Duration.zero;
+            final snapshotDuration = durationSnapshot.data;
+            final stateDuration = player.state.duration;
+            final duration =
+                snapshotDuration != null && snapshotDuration > Duration.zero
+                ? snapshotDuration
+                : durationOverride != null && durationOverride! > Duration.zero
+                ? durationOverride!
+                : stateDuration;
 
             return Container(
               key: const ValueKey('video-progress-controls'),

@@ -45,9 +45,31 @@ void main() {
       expect(bytes, List<int>.generate(10, (index) => index + 10));
       expect(fileSource.reads.single, (
         path: 'movies/movie.mp4',
-        offset: 10,
-        length: 10,
+        offset: 0,
+        length: 100,
       ));
+    });
+
+    test('serves nearby ranges from the video range cache', () async {
+      final handle = await service.register(
+        fileSource: fileSource,
+        relativePath: 'movies/movie.mp4',
+        fileSize: 100,
+      );
+
+      final firstRequest = await client.getUrl(handle.uri);
+      firstRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=10-19');
+      final firstResponse = await firstRequest.close();
+      await _readAll(firstResponse);
+
+      final secondRequest = await client.getUrl(handle.uri);
+      secondRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=20-29');
+      final secondResponse = await secondRequest.close();
+      final secondBytes = await _readAll(secondResponse);
+
+      expect(secondResponse.statusCode, HttpStatus.partialContent);
+      expect(secondBytes, List<int>.generate(10, (index) => index + 20));
+      expect(fileSource.reads, hasLength(1));
     });
 
     test('returns 416 for unsatisfiable ranges', () async {

@@ -12,7 +12,11 @@ class VideoSeekGestureArea extends StatefulWidget {
     required this.onScrubStart,
     required this.onScrubUpdate,
     required this.onScrubEnd,
+    required this.currentPosition,
     this.onTap,
+    this.onLongPressStart,
+    this.onLongPressMoveUpdate,
+    this.onLongPressEnd,
   });
 
   final Duration position;
@@ -20,7 +24,11 @@ class VideoSeekGestureArea extends StatefulWidget {
   final ValueChanged<Duration> onScrubStart;
   final ValueChanged<Duration> onScrubUpdate;
   final ValueChanged<Duration> onScrubEnd;
+  final Duration Function() currentPosition;
   final VoidCallback? onTap;
+  final GestureLongPressStartCallback? onLongPressStart;
+  final GestureLongPressMoveUpdateCallback? onLongPressMoveUpdate;
+  final GestureLongPressEndCallback? onLongPressEnd;
 
   @override
   State<VideoSeekGestureArea> createState() => _VideoSeekGestureAreaState();
@@ -29,7 +37,11 @@ class VideoSeekGestureArea extends StatefulWidget {
 class _VideoSeekGestureAreaState extends State<VideoSeekGestureArea> {
   Duration _dragStartPosition = Duration.zero;
   Duration _latestPosition = Duration.zero;
-  double _dragDistance = 0;
+  Offset _dragDistance = Offset.zero;
+  bool _scrubbing = false;
+  bool _longPressing = false;
+
+  static const double _scrubStartThreshold = 18;
 
   @override
   Widget build(BuildContext context) {
@@ -39,34 +51,62 @@ class _VideoSeekGestureAreaState extends State<VideoSeekGestureArea> {
         behavior: HitTestBehavior.translucent,
         excludeFromSemantics: true,
         onTap: widget.onTap,
-        onHorizontalDragStart: widget.duration == Duration.zero
+        onLongPressStart: (details) {
+          _longPressing = true;
+          widget.onLongPressStart?.call(details);
+        },
+        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+        onLongPressEnd: (details) {
+          _longPressing = false;
+          widget.onLongPressEnd?.call(details);
+        },
+        onLongPressCancel: () => _longPressing = false,
+        onPanStart: widget.duration == Duration.zero
             ? null
             : (_) {
-                _dragStartPosition = widget.position;
-                _latestPosition = widget.position;
-                _dragDistance = 0;
-                widget.onScrubStart(widget.position);
+                _dragStartPosition = widget.currentPosition();
+                _latestPosition = _dragStartPosition;
+                _dragDistance = Offset.zero;
+                _scrubbing = false;
               },
-        onHorizontalDragUpdate: widget.duration == Duration.zero
+        onPanUpdate: widget.duration == Duration.zero
             ? null
             : (details) {
-                _dragDistance += details.primaryDelta ?? 0;
+                if (_longPressing) return;
+                _dragDistance += details.delta;
+                if (!_scrubbing) {
+                  final horizontal = _dragDistance.dx.abs();
+                  final vertical = _dragDistance.dy.abs();
+                  if (horizontal < _scrubStartThreshold ||
+                      horizontal <= vertical * 1.4) {
+                    return;
+                  }
+                  _scrubbing = true;
+                  widget.onScrubStart(_dragStartPosition);
+                }
                 final width = constraints.maxWidth;
                 if (width <= 0) return;
                 final delta =
-                    widget.duration.inMilliseconds * (_dragDistance / width);
+                    widget.duration.inMilliseconds *
+                    (_dragDistance.dx / width);
                 final targetMs = (_dragStartPosition.inMilliseconds + delta)
                     .round()
                     .clamp(0, widget.duration.inMilliseconds);
                 _latestPosition = Duration(milliseconds: targetMs);
                 widget.onScrubUpdate(_latestPosition);
               },
-        onHorizontalDragEnd: widget.duration == Duration.zero
+        onPanEnd: widget.duration == Duration.zero
             ? null
-            : (_) => widget.onScrubEnd(_latestPosition),
-        onHorizontalDragCancel: widget.duration == Duration.zero
+            : (_) {
+                if (_scrubbing) widget.onScrubEnd(_latestPosition);
+                _scrubbing = false;
+              },
+        onPanCancel: widget.duration == Duration.zero
             ? null
-            : () => widget.onScrubEnd(_latestPosition),
+            : () {
+                if (_scrubbing) widget.onScrubEnd(_latestPosition);
+                _scrubbing = false;
+              },
       ),
     );
   }

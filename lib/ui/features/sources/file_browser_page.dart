@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -101,73 +103,84 @@ class _FileBrowserView extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final useDualPane = screenWidth >= 900;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: vm.isMultiSelectMode
-            ? Text('已选 ${vm.selectedPaths.length} 项')
-            : Text(vm.sourceName),
-        leading: vm.isMultiSelectMode
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: vm.exitMultiSelectMode,
-              )
-            : null,
-        actions: [
-          if (vm.isMultiSelectMode) ...[
-            IconButton(
-              icon: const Icon(Icons.select_all),
-              onPressed: vm.selectAll,
-              tooltip: '全选',
-            ),
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.drive_folder_upload),
-              onPressed: () => _scanDirectory(context, vm, null),
-              tooltip: '扫描入库',
-            ),
-            IconButton(
-              icon: const Icon(Icons.checklist),
-              onPressed: vm.enterMultiSelectMode,
-              tooltip: '多选',
-            ),
-            PopupMenuButton<FileBrowserSort>(
-              tooltip: '排序',
-              icon: const Icon(Icons.sort),
-              initialValue: vm.sort,
-              onSelected: vm.setSort,
-              itemBuilder: (context) => FileBrowserSort.values
-                  .map(
-                    (sort) => PopupMenuItem(
-                      value: sort,
-                      child: Row(
-                        children: [
-                          Expanded(child: Text(_fileSortLabel(sort))),
-                          if (vm.sort == sort)
-                            const Icon(Icons.check, size: 18),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-            IconButton(
-              icon: Icon(
-                vm.viewMode == ViewMode.list
-                    ? Icons.grid_view
-                    : Icons.view_list,
+    return PopScope(
+      canPop: !vm.isMultiSelectMode && vm.currentPath.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (vm.isMultiSelectMode) {
+          vm.exitMultiSelectMode();
+          return;
+        }
+        unawaited(vm.goBack());
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: vm.isMultiSelectMode
+              ? Text('已选 ${vm.selectedPaths.length} 项')
+              : Text(vm.sourceName),
+          leading: vm.isMultiSelectMode
+              ? IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: vm.exitMultiSelectMode,
+                )
+              : null,
+          actions: [
+            if (vm.isMultiSelectMode) ...[
+              IconButton(
+                icon: const Icon(Icons.select_all),
+                onPressed: vm.selectAll,
+                tooltip: '全选',
               ),
-              onPressed: vm.toggleViewMode,
-              tooltip: vm.viewMode == ViewMode.list ? '网格视图' : '列表视图',
-            ),
+            ] else ...[
+              IconButton(
+                icon: const Icon(Icons.drive_folder_upload),
+                onPressed: () => _scanDirectory(context, vm, null),
+                tooltip: '扫描入库',
+              ),
+              IconButton(
+                icon: const Icon(Icons.checklist),
+                onPressed: vm.enterMultiSelectMode,
+                tooltip: '多选',
+              ),
+              PopupMenuButton<FileBrowserSort>(
+                tooltip: '排序',
+                icon: const Icon(Icons.sort),
+                initialValue: vm.sort,
+                onSelected: vm.setSort,
+                itemBuilder: (context) => FileBrowserSort.values
+                    .map(
+                      (sort) => PopupMenuItem(
+                        value: sort,
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(_fileSortLabel(sort))),
+                            if (vm.sort == sort)
+                              const Icon(Icons.check, size: 18),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              IconButton(
+                icon: Icon(
+                  vm.viewMode == ViewMode.list
+                      ? Icons.grid_view
+                      : Icons.view_list,
+                ),
+                onPressed: vm.toggleViewMode,
+                tooltip: vm.viewMode == ViewMode.list ? '网格视图' : '列表视图',
+              ),
+            ],
           ],
-        ],
+        ),
+        body: useDualPane
+            ? _buildDualPane(context, vm)
+            : _buildSinglePane(context, vm),
+        bottomNavigationBar: vm.isMultiSelectMode
+            ? _buildMultiSelectBar(context, vm)
+            : null,
       ),
-      body: useDualPane
-          ? _buildDualPane(context, vm)
-          : _buildSinglePane(context, vm),
-      bottomNavigationBar: vm.isMultiSelectMode
-          ? _buildMultiSelectBar(context, vm)
-          : null,
     );
   }
 

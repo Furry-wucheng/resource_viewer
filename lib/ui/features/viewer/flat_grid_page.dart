@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -90,32 +91,39 @@ class _FlatGridPageState extends State<FlatGridPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: _viewModel.canGoBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => _viewModel.goBack(),
-              )
-            : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-        title: Text(widget.resource.name),
-        actions: [
-          OrgModeSwitcher(
-            currentMode: widget.resource.organizationMode,
-            onModeChanged: _switchOrgMode,
-            chapterEnabled: _viewModel.supportsChapterMode,
-          ),
-          const SizedBox(width: 8),
-        ],
+    return PopScope(
+      canPop: !_viewModel.canGoBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_viewModel.goBack());
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: _viewModel.canGoBack
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => _viewModel.goBack(),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+          title: Text(widget.resource.name),
+          actions: [
+            OrgModeSwitcher(
+              currentMode: widget.resource.organizationMode,
+              onModeChanged: _switchOrgMode,
+              chapterEnabled: _viewModel.supportsChapterMode,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: _viewModel.state == UiState.loading
+            ? const Center(child: CircularProgressIndicator())
+            : _viewModel.state == UiState.error
+            ? _buildError()
+            : _buildContent(),
       ),
-      body: _viewModel.state == UiState.loading
-          ? const Center(child: CircularProgressIndicator())
-          : _viewModel.state == UiState.error
-          ? _buildError()
-          : _buildContent(),
     );
   }
 

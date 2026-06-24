@@ -216,6 +216,7 @@ class ViewerViewModel extends BaseViewModel {
   bool _isToolbarVisible = true;
   bool get isToolbarVisible => _isToolbarVisible;
   final Map<int, Uint8List> _pageCache = {};
+  final Map<int, Future<Uint8List?>> _pageLoads = {};
   final Set<int> _failedPages = {};
   bool _disposed = false;
 
@@ -247,6 +248,14 @@ class ViewerViewModel extends BaseViewModel {
     final cached = _pageCache[page];
     if (cached != null) return cached;
     if (_failedPages.contains(page)) return null;
+    final inFlight = _pageLoads[page];
+    if (inFlight != null) return inFlight;
+    final future = _loadPageContent(page);
+    _pageLoads[page] = future;
+    return future;
+  }
+
+  Future<Uint8List?> _loadPageContent(int page) async {
     try {
       final content = await itemAt(page).loadImage!();
       if (_disposed) return null;
@@ -259,12 +268,15 @@ class ViewerViewModel extends BaseViewModel {
       _failedPages.add(page);
       _notifyListeners();
       return null;
+    } finally {
+      _pageLoads.remove(page);
     }
   }
 
   Future<Uint8List?> retryPage(int page) async {
     _failedPages.remove(page);
     _pageCache.remove(page);
+    _pageLoads.remove(page);
     return getPageContent(page);
   }
 
@@ -275,17 +287,21 @@ class ViewerViewModel extends BaseViewModel {
   }
 
   Future<void> _preloadPages(int centerPage) async {
-    final pages = <int>[];
-    for (var index = centerPage - 1; index <= centerPage + 2; index++) {
-      if (index >= 0 &&
-          index < totalPages &&
-          itemAt(index).type == ViewerMediaType.image &&
-          !_pageCache.containsKey(index)) {
-        pages.add(index);
-      }
+    if (_canPreloadPage(centerPage)) {
+      await getPageContent(centerPage);
     }
-    await Future.wait(pages.map(getPageContent));
+    final nextPage = centerPage + 1;
+    if (_canPreloadPage(nextPage)) {
+      unawaited(getPageContent(nextPage));
+    }
   }
+
+  bool _canPreloadPage(int page) =>
+      page >= 0 &&
+      page < totalPages &&
+      itemAt(page).type == ViewerMediaType.image &&
+      !_pageCache.containsKey(page) &&
+      !_failedPages.contains(page);
 
   @override
   Future<void> retry() => init();

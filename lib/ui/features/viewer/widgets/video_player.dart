@@ -52,15 +52,22 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   late final Player _player;
   late final VideoController _controller;
   late final VideoStreamService _streamService;
+  late final StreamSubscription<Duration> _positionSubscription;
+  late final StreamSubscription<Duration?> _durationSubscription;
   bool _speedMode = false;
   double _speed = 1;
   double _dragOriginY = 0;
-  Timer? _scrubTimer;
   Duration? _scrubPosition;
   Duration? _pendingSeek;
+  Duration? _displayPositionOverride;
+  Duration _lastVisiblePosition = Duration.zero;
+  Duration _lastKnownDuration = Duration.zero;
   bool _seekInProgress = false;
   bool _scrubEnding = false;
   bool _resumeAfterScrub = false;
+  bool _wasPlayingBeforeSpeedMode = false;
+  int _seekGeneration = 0;
+  Timer? _seekSettleTimer;
   VideoStreamHandle? _streamHandle;
 
   static const _speedSteps = <double>[1, 1.25, 1.5, 1.75, 2, 2.5, 3];
@@ -70,6 +77,19 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     super.initState();
     _streamService = context.read<VideoStreamService>();
     _player = Player();
+    _positionSubscription = _player.stream.position.listen((position) {
+      _lastVisiblePosition = position;
+      final override = _displayPositionOverride;
+      if (override == null || _isScrubbing) return;
+      if ((position - override).abs() < const Duration(milliseconds: 500)) {
+        _clearDisplayPositionOverride();
+      }
+    });
+    _durationSubscription = _player.stream.duration.listen((duration) {
+      if (duration == Duration.zero) return;
+      _lastKnownDuration = duration;
+      if (mounted) setState(() {});
+    });
     widget.playbackController?._attach(_player);
     _controller = VideoController(_player);
     unawaited(_open(widget.source));
@@ -90,7 +110,9 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
 
   @override
   void dispose() {
-    _scrubTimer?.cancel();
+    _seekSettleTimer?.cancel();
+    unawaited(_positionSubscription.cancel());
+    unawaited(_durationSubscription.cancel());
     unawaited(_revokeStreamHandle());
     widget.playbackController?._detach(_player);
     _player.dispose();
@@ -150,15 +172,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
               builder: (context, positionSnapshot) => StreamBuilder<Duration?>(
                 stream: _player.stream.duration,
                 builder: (context, durationSnapshot) => VideoSeekGestureArea(
-                  position:
-                      _scrubPosition ??
-                      positionSnapshot.data ??
-                      _player.state.position,
-                  duration: durationSnapshot.data ?? _player.state.duration,
+                  position: _displayPosition(positionSnapshot.data),
+                  duration: _displayDuration(durationSnapshot.data),
+                  currentPosition: _currentPlaybackPosition,
                   onScrubStart: _startScrub,
                   onScrubUpdate: _updateScrub,
                   onScrubEnd: _endScrub,
                   onTap: widget.onToggleToolbar,
+                  onLongPressStart: _startSpeedMode,
+                  onLongPressMoveUpdate: _updateSpeedMode,
+                  onLongPressEnd: (_) => _endSpeedMode(),
                 ),
               ),
             ),
@@ -170,7 +193,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
               bottom: 0,
               child: VideoProgressBar(
                 player: _player,
-                positionOverride: _scrubPosition,
+                positionOverride: _displayPositionOverride ?? _scrubPosition,
+                durationOverride: _lastKnownDuration,
                 onScrubStart: _startScrub,
                 onScrubUpdate: _updateScrub,
                 onScrubEnd: _endScrub,
@@ -222,8 +246,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   }
 
   void _startSpeedMode(LongPressStartDetails details) {
+    if (_speedMode) return;
     _dragOriginY = details.globalPosition.dy;
+    _seekGeneration++;
+    _pendingSeek = null;
+    _scrubEnding = false;
+    _scrubPosition = null;
+    _displayPositionOverride = null;
+    _wasPlayingBeforeSpeedMode = _player.state.playing;
     _setSpeed(2);
+    unawaited(_player.play());
     setState(() => _speedMode = true);
   }
 
@@ -232,6 +264,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     if (!mounted) return;
     if (source.kind == VideoMediaSourceKind.localFile) {
       await _player.open(Media(source.path!), play: widget.active);
+      _syncCachedPlaybackState();
       return;
     }
 
@@ -246,6 +279,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
     _streamHandle = handle;
     await _player.open(Media(handle.uri.toString()), play: widget.active);
+    _syncCachedPlaybackState();
   }
 
   Future<void> _revokeStreamHandle() async {
@@ -274,6 +308,9 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
 
   void _endSpeedMode() {
     _setSpeed(1);
+    if (!_wasPlayingBeforeSpeedMode) {
+      unawaited(_player.pause());
+    }
     if (mounted) setState(() => _speedMode = false);
   }
 
@@ -285,29 +322,37 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   }
 
   void _startScrub(Duration position) {
-    _scrubTimer?.cancel();
+    if (_speedMode) _endSpeedMode();
+    _seekGeneration++;
+    _seekSettleTimer?.cancel();
     _pendingSeek = null;
     _scrubEnding = false;
     _resumeAfterScrub = _player.state.playing;
     if (_resumeAfterScrub) unawaited(_player.pause());
-    setState(() => _scrubPosition = position);
+    setState(() {
+      _scrubPosition = position;
+      _displayPositionOverride = position;
+    });
   }
 
   void _updateScrub(Duration position) {
     if (!mounted) return;
-    setState(() => _scrubPosition = position);
     _pendingSeek = position;
-    _scrubTimer ??= Timer(const Duration(milliseconds: 50), () {
-      _scrubTimer = null;
-      unawaited(_flushSeek());
+    setState(() {
+      _scrubPosition = position;
+      _displayPositionOverride = position;
     });
   }
 
   void _endScrub(Duration position) {
-    _scrubTimer?.cancel();
-    _scrubTimer = null;
     _pendingSeek = position;
     _scrubEnding = true;
+    if (mounted) {
+      setState(() {
+        _scrubPosition = position;
+        _displayPositionOverride = position;
+      });
+    }
     unawaited(_flushSeek());
   }
 
@@ -315,10 +360,13 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     if (_seekInProgress) return;
     final target = _pendingSeek;
     if (target == null) return;
+    final generation = _seekGeneration;
     _pendingSeek = null;
     _seekInProgress = true;
     await _player.seek(target);
     _seekInProgress = false;
+    if (generation != _seekGeneration) return;
+    _lastVisiblePosition = target;
 
     if (_pendingSeek != null) {
       await _flushSeek();
@@ -327,8 +375,64 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     if (!_scrubEnding) return;
 
     _scrubEnding = false;
-    if (mounted) setState(() => _scrubPosition = null);
+    if (mounted) {
+      setState(() {
+        _scrubPosition = null;
+        _displayPositionOverride = target;
+      });
+    }
+    _scheduleDisplayOverrideClear();
     if (_resumeAfterScrub) await _player.play();
+  }
+
+  bool get _isScrubbing =>
+      _scrubPosition != null ||
+      _pendingSeek != null ||
+      _seekInProgress ||
+      _scrubEnding;
+
+  Duration _displayPosition(Duration? streamPosition) =>
+      _displayPositionOverride ??
+      _scrubPosition ??
+      streamPosition ??
+      _lastVisiblePosition;
+
+  Duration _currentPlaybackPosition() {
+    final position = _player.state.position;
+    if (position > Duration.zero) return position;
+    return _lastVisiblePosition;
+  }
+
+  Duration _displayDuration(Duration? streamDuration) {
+    final candidates = [
+      streamDuration,
+      _player.state.duration,
+      _lastKnownDuration,
+    ];
+    for (final duration in candidates) {
+      if (duration != null && duration > Duration.zero) return duration;
+    }
+    return Duration.zero;
+  }
+
+  void _syncCachedPlaybackState() {
+    final position = _player.state.position;
+    final duration = _player.state.duration;
+    if (position > Duration.zero) _lastVisiblePosition = position;
+    if (duration > Duration.zero) _lastKnownDuration = duration;
+    if (mounted) setState(() {});
+  }
+
+  void _scheduleDisplayOverrideClear() {
+    _seekSettleTimer?.cancel();
+    _seekSettleTimer = Timer(const Duration(milliseconds: 900), () {
+      _clearDisplayPositionOverride();
+    });
+  }
+
+  void _clearDisplayPositionOverride() {
+    if (!mounted || _displayPositionOverride == null || _isScrubbing) return;
+    setState(() => _displayPositionOverride = null);
   }
 
   String _formatDuration(Duration duration) {

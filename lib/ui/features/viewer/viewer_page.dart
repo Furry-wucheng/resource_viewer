@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 
 import '../../../data/repositories/settings_repository.dart';
@@ -96,6 +96,8 @@ class _ViewerPageState extends State<ViewerPage> {
   List<_ViewerPosition> _lastPositions = const [];
   PageDirection? _lastPageDirection;
   final Map<int, double> _imageAspectRatios = {};
+  final Set<int> _aspectRatioLoads = {};
+  bool? _lastToolbarSystemUiVisible;
 
   static const double _wideImageAspectRatio = 1.2;
 
@@ -161,6 +163,7 @@ class _ViewerPageState extends State<ViewerPage> {
       controller.dispose();
     }
     _viewModel.dispose();
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
   }
 
@@ -171,6 +174,7 @@ class _ViewerPageState extends State<ViewerPage> {
       child: Consumer<ViewerViewModel>(
         builder: (context, vm, _) => LayoutBuilder(
           builder: (context, constraints) {
+            _syncSystemUi(vm.isToolbarVisible);
             _windowWidth = constraints.maxWidth;
             // 双页模式判断。视频页不进入双页，宽图/尺寸未知图不参与配对。
             final requestedDoublePage = _doublePageRequested(vm);
@@ -226,6 +230,19 @@ class _ViewerPageState extends State<ViewerPage> {
         ),
       ),
     );
+  }
+
+  void _syncSystemUi(bool toolbarVisible) {
+    if (_lastToolbarSystemUiVisible == toolbarVisible) return;
+    _lastToolbarSystemUiVisible = toolbarVisible;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        SystemChrome.setEnabledSystemUIMode(
+          toolbarVisible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
+        ),
+      );
+    });
   }
 
   Widget _buildViewer(
@@ -859,19 +876,29 @@ class _ViewerPageState extends State<ViewerPage> {
   }
 
   void _ensureAspectRatio(int index, Uint8List bytes) {
-    if (_imageAspectRatios.containsKey(index)) return;
-    final ratio = _decodeAspectRatio(bytes);
-    if (ratio == null) return;
-    _imageAspectRatios[index] = ratio;
+    if (_imageAspectRatios.containsKey(index) ||
+        _aspectRatioLoads.contains(index)) {
+      return;
+    }
+    _aspectRatioLoads.add(index);
+    unawaited(_loadAspectRatio(index, bytes));
   }
 
-  double? _decodeAspectRatio(Uint8List bytes) {
+  Future<void> _loadAspectRatio(int index, Uint8List bytes) async {
     try {
-      final image = img.decodeImage(bytes);
-      if (image == null || image.height == 0) return 0.75;
-      return image.width / image.height;
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final height = descriptor.height;
+      final ratio = height == 0 ? 0.75 : descriptor.width / height;
+      descriptor.dispose();
+      buffer.dispose();
+      if (!mounted) return;
+      setState(() => _imageAspectRatios[index] = ratio);
     } catch (_) {
-      return 0.75;
+      if (!mounted) return;
+      setState(() => _imageAspectRatios[index] = 0.75);
+    } finally {
+      _aspectRatioLoads.remove(index);
     }
   }
 }
