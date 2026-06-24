@@ -51,6 +51,13 @@ class SmbFileSource implements FileSource {
   /// SMB 连接池
   SmbPoolClient? _pool;
 
+  /// 视频流式读取的 LRU 字节缓存：offset → chunk。
+  /// mpv 在 2x 长时间播放或 seek 来回时会重复请求已读字节范围，
+  /// 命中缓存直接返回不走 SMB，避免重复网络读取导致的卡顿。
+  final Map<int, Uint8List> _streamRangeCache = {};
+  final List<int> _streamRangeLru = [];
+  static const int _streamRangeCacheMaxEntries = 64;
+
   /// 确保连接池已创建
   Future<SmbPoolClient> _ensurePool() async {
     if (_pool != null) return _pool!;
@@ -172,7 +179,57 @@ class SmbFileSource implements FileSource {
   }) async* {
     final pool = await _ensurePool();
     final smbPath = _toSmbPath(relativePath);
-    yield* pool.streamRange(smbPath, offset: offset, length: length);
+    // 自己管理持久句柄 + LRU 缓存，不委托 pool.streamRange：
+    //   - 持久句柄（open + 循环 readFromHandle + close）降低网络开销
+    //   - LRU 缓存让 mpv 重复 range 请求命中内存、不走 SMB
+    //     （2x 长时间播放 / seek 来回时 mpv 会重复请求已读字节）
+    final (handle, size) = await pool.openFileWithSize(smbPath);
+    try {
+      final end = (offset + length).clamp(0, size);
+      var pos = offset.clamp(0, size);
+      const chunkSize = 1024 * 1024;
+      while (pos < end) {
+        final toRead = (end - pos) < chunkSize ? (end - pos) : chunkSize;
+        // 查缓存（精确 offset 匹配；mpv 重复请求相同 range 时 offset 一致）
+        final cached = _streamRangeCache[pos];
+        if (cached != null) {
+          // 截断到当前需要的大小（末尾零头块可能两次请求长度不同）
+          final take = cached.length < toRead ? cached.length : toRead;
+          yield take == cached.length
+              ? cached
+              : Uint8List.sublistView(cached, 0, take);
+          _touchStreamRangeLru(pos);
+          pos += take;
+          continue;
+        }
+        final chunk = await pool.readFromHandle(
+          handle,
+          offset: pos,
+          length: toRead,
+        );
+        if (chunk.isEmpty) break;
+        _putStreamRangeCache(pos, chunk);
+        yield chunk;
+        pos += chunk.length;
+      }
+    } finally {
+      await pool.closeHandle(handle);
+    }
+  }
+
+  void _touchStreamRangeLru(int offset) {
+    _streamRangeLru.remove(offset);
+    _streamRangeLru.add(offset);
+  }
+
+  void _putStreamRangeCache(int offset, Uint8List bytes) {
+    _streamRangeCache[offset] = bytes;
+    _touchStreamRangeLru(offset);
+    while (_streamRangeCache.length > _streamRangeCacheMaxEntries &&
+        _streamRangeLru.isNotEmpty) {
+      final oldest = _streamRangeLru.removeAt(0);
+      _streamRangeCache.remove(oldest);
+    }
   }
 
   @override
@@ -284,6 +341,13 @@ abstract class SmbPoolClient {
     required int offset,
     required int length,
   });
+  Future<(Smb2PoolHandle, int)> openFileWithSize(String path);
+  Future<Uint8List> readFromHandle(
+    Smb2PoolHandle handle, {
+    required int offset,
+    required int length,
+  });
+  Future<void> closeHandle(Smb2PoolHandle handle);
   Future<void> echo();
   Future<void> disconnect();
 }
@@ -314,15 +378,29 @@ class _DartSmbPoolClient implements SmbPoolClient {
   }) => pool.readFileRange(path, offset: offset, length: length);
 
   @override
+  Future<(Smb2PoolHandle, int)> openFileWithSize(String path) =>
+      pool.openFileWithSize(path);
+
+  @override
+  Future<Uint8List> readFromHandle(
+    Smb2PoolHandle handle, {
+    required int offset,
+    required int length,
+  }) => pool.readFromHandle(handle, offset: offset, length: length);
+
+  @override
+  Future<void> closeHandle(Smb2PoolHandle handle) =>
+      pool.closeHandle(handle);
+
+  @override
   Stream<Uint8List> streamRange(
     String path, {
     required int offset,
     required int length,
   }) async* {
     // 持久句柄流式读取：一次 open + 循环 1MB pread + 一次 close。
-    // 相比循环 readFileRange（每次 open/close 句柄），网络开销显著降低；
-    // 配合 VideoStreamService 的 `await for` 管道形成自然背压，推送速率
-    // 匹配 mpv 消费速率，消除突发模式与 2x 倍速下的 demuxer underrun。
+    // 注意：SmbFileSource.streamRange 已用自己的缓存+句柄管理覆盖此方法，
+    // 这里保留作为 SmbPoolClient 抽象的兜底实现。
     final (handle, size) = await pool.openFileWithSize(path);
     try {
       final end = (offset + length).clamp(0, size);
