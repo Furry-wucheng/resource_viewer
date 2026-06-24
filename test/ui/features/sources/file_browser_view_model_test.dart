@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:resource_viewer/data/repositories/filesystem_repository.dart';
@@ -195,6 +198,61 @@ void main() {
     await viewModel.loadDirectory('');
     expect(viewModel.sort, FileBrowserSort.nameDesc);
     expect(viewModel.entries.map((e) => e.name), ['dir', 'b.jpg', 'a.jpg']);
+  });
+
+  test('切换目录时排队中的缩略图任务会正常完成', () async {
+    final filesystem = _MockFilesystemRepository();
+    final resources = _MockResourceRepository();
+    final tags = _MockTagRepository();
+    final thumbnails = _MockThumbnailRepository();
+    final sourceFactory = _MockFileSourceFactory();
+    final fileSource = _MockFileSource();
+    const firstEntry = FileEntry(
+      name: '001.jpg',
+      path: '001.jpg',
+      isDirectory: false,
+    );
+    const secondEntry = FileEntry(
+      name: '002.jpg',
+      path: '002.jpg',
+      isDirectory: false,
+    );
+    final firstPreview = Completer<Result<Uint8List?>>();
+
+    when(() => sourceFactory.get('source')).thenReturn(fileSource);
+    when(
+      () => thumbnails.preview(fileSource, firstEntry),
+    ).thenAnswer((_) => firstPreview.future);
+    when(
+      () => filesystem.listDirectory('source', 'next'),
+    ).thenAnswer((_) async => const Ok([]));
+    when(
+      () => resources.getResourcesBySourceIdAndPaths('source', any()),
+    ).thenAnswer((_) async => const Ok([]));
+
+    final viewModel = FileBrowserViewModel(
+      sourceId: 'source',
+      sourceName: '测试源',
+      filesystemRepository: filesystem,
+      resourceRepository: resources,
+      tagRepository: tags,
+      thumbnailRepository: thumbnails,
+      fileSourceFactory: sourceFactory,
+      thumbnailConcurrency: 1,
+    );
+
+    final firstFuture = viewModel.thumbnailFor(firstEntry);
+    final queuedFuture = viewModel.thumbnailFor(secondEntry);
+
+    await viewModel.loadDirectory('next');
+    await expectLater(
+      queuedFuture.timeout(const Duration(milliseconds: 200)),
+      completion(isNull),
+    );
+
+    firstPreview.complete(Ok(Uint8List.fromList([1, 2, 3])));
+    await expectLater(firstFuture, completion(isNotNull));
+    verifyNever(() => thumbnails.preview(fileSource, secondEntry));
   });
 
   group('batchTagSelectedResources', () {

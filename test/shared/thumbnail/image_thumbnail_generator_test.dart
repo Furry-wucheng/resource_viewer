@@ -135,6 +135,28 @@ void main() {
       expect(thumbnailBytes, originalBytes);
     });
 
+    test('支持图片解码失败时小文件回退写入原始字节', () async {
+      final originalBytes = [1, 2, 3, 4];
+      await File(
+        p.join(tempDir.path, 'special.webp'),
+      ).writeAsBytes(originalBytes);
+
+      final result = await generator.generate(fileSource, '', 'special');
+
+      expect(result, isNotNull);
+      final thumbnailBytes = await File(result!).readAsBytes();
+      expect(thumbnailBytes, originalBytes);
+    });
+
+    test('支持图片解码失败时大文件不回退原始字节', () async {
+      final originalBytes = List<int>.filled(513 * 1024, 0);
+      await File(p.join(tempDir.path, 'large.jpg')).writeAsBytes(originalBytes);
+
+      final result = await generator.generate(fileSource, '', 'large');
+
+      expect(result, isNull);
+    });
+
     test('空目录返回 null', () async {
       final result = await generator.generate(fileSource, '', 'resource-1');
       expect(result, isNull);

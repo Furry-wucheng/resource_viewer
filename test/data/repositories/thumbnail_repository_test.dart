@@ -45,6 +45,64 @@ void main() {
     expect((second as Ok<Uint8List?>).value, isNotEmpty);
   });
 
+  test('支持图片预览压缩解码失败时小文件回退到原始字节', () async {
+    final temp = await Directory.systemTemp.createTemp('thumbnail_image_raw_');
+    addTearDown(() => temp.delete(recursive: true));
+    final sourceDir = Directory(p.join(temp.path, 'source'))..createSync();
+    final imageFile = File(p.join(sourceDir.path, 'special.webp'));
+    final originalBytes = Uint8List.fromList([1, 2, 3, 4]);
+    await imageFile.writeAsBytes(originalBytes);
+    final source = LocalFileSource(
+      sourceId: 'source',
+      rootPath: sourceDir.path,
+    );
+    final cache = ThumbnailCacheService(cacheDirectory: temp.path);
+    final repository = ThumbnailRepository(cache);
+
+    final result = await repository.preview(
+      source,
+      FileEntry(
+        name: 'special.webp',
+        path: 'special.webp',
+        isDirectory: false,
+        size: BigInt.from(originalBytes.length),
+        modifiedAt: DateTime(2026),
+      ),
+    );
+
+    expect(result, isA<Ok<Uint8List?>>());
+    expect((result as Ok<Uint8List?>).value, originalBytes);
+  });
+
+  test('支持图片预览压缩解码失败时大文件不回退原始字节', () async {
+    final temp = await Directory.systemTemp.createTemp('thumbnail_image_big_');
+    addTearDown(() => temp.delete(recursive: true));
+    final sourceDir = Directory(p.join(temp.path, 'source'))..createSync();
+    final imageFile = File(p.join(sourceDir.path, 'large.jpg'));
+    final originalBytes = Uint8List(513 * 1024);
+    await imageFile.writeAsBytes(originalBytes);
+    final source = LocalFileSource(
+      sourceId: 'source',
+      rootPath: sourceDir.path,
+    );
+    final cache = ThumbnailCacheService(cacheDirectory: temp.path);
+    final repository = ThumbnailRepository(cache);
+
+    final result = await repository.preview(
+      source,
+      FileEntry(
+        name: 'large.jpg',
+        path: 'large.jpg',
+        isDirectory: false,
+        size: BigInt.from(originalBytes.length),
+        modifiedAt: DateTime(2026),
+      ),
+    );
+
+    expect(result, isA<Ok<Uint8List?>>());
+    expect((result as Ok<Uint8List?>).value, isNull);
+  });
+
   test('文件夹预览会使用直属图片文件', () async {
     final temp = await Directory.systemTemp.createTemp('thumbnail_direct_');
     addTearDown(() => temp.delete(recursive: true));

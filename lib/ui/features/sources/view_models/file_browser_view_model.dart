@@ -44,35 +44,56 @@ class _ThumbnailPool {
 
   final int maxConcurrent;
   int _running = 0;
-  final _queue = <void Function()>[];
+  final _queue = <_QueuedThumbnailTask>[];
 
   /// 提交任务；返回的 Future 在任务完成时 resolve（保留错误语义）
-  Future<T> schedule<T>(Future<T> Function() task) {
-    final completer = Completer<T>.sync();
-    _queue.add(() async {
-      _running++;
-      try {
-        final result = await task();
-        completer.complete(result);
-      } catch (e) {
-        completer.completeError(e);
-      } finally {
-        _running--;
-        _runNext();
-      }
-    });
+  Future<Uint8List?> schedule(Future<Uint8List?> Function() task) {
+    final queuedTask = _QueuedThumbnailTask(task);
+    _queue.add(queuedTask);
     _runNext();
-    return completer.future;
+    return queuedTask.completer.future;
+  }
+
+  Future<void> _runTask(_QueuedThumbnailTask queuedTask) async {
+    if (queuedTask.completer.isCompleted) return;
+    _running++;
+    try {
+      final result = await queuedTask.task();
+      if (!queuedTask.completer.isCompleted) {
+        queuedTask.completer.complete(result);
+      }
+    } catch (e) {
+      if (!queuedTask.completer.isCompleted) {
+        queuedTask.completer.completeError(e);
+      }
+    } finally {
+      _running--;
+      _runNext();
+    }
   }
 
   void _runNext() {
     while (_running < maxConcurrent && _queue.isNotEmpty) {
-      _queue.removeAt(0)();
+      _runTask(_queue.removeAt(0));
     }
   }
 
-  /// 清空等待队列（不取消进行中任务）
-  void drainPending() => _queue.clear();
+  /// 清空等待队列（不取消进行中任务），并让等待中的 Future 正常完成。
+  void drainPending() {
+    for (final queuedTask in _queue) {
+      if (!queuedTask.completer.isCompleted) {
+        queuedTask.completer.complete(null);
+      }
+    }
+    _queue.clear();
+  }
+}
+
+class _QueuedThumbnailTask {
+  _QueuedThumbnailTask(this.task);
+
+  final Future<Uint8List?> Function() task;
+  final Completer<Uint8List?> completer = Completer<Uint8List?>.sync();
 }
 
 // ============================================================================

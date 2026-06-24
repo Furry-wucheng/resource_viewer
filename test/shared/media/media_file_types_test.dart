@@ -20,6 +20,15 @@ void main() {
     }
   });
 
+  test('supported images can fallback to original preview bytes', () {
+    expect(MediaFileTypes.canFallbackToOriginalPreviewBytes('cover.jpg'), true);
+    expect(
+      MediaFileTypes.canFallbackToOriginalPreviewBytes('cover.WEBP'),
+      true,
+    );
+    expect(MediaFileTypes.canFallbackToOriginalPreviewBytes('book.pdf'), false);
+  });
+
   test('classifies pdf, video, and archive files', () {
     expect(MediaFileTypes.isPdf('book.pdf'), isTrue);
     expect(MediaFileTypes.isVideo('clip.m4v'), isTrue);

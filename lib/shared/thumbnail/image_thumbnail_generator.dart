@@ -92,8 +92,15 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
   }
 
   static List<int>? _encodeThumbnail(Uint8List bytes, String extension) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
+    final img.Image? decoded;
+    try {
+      decoded = img.decodeImage(bytes);
+    } catch (_) {
+      return _canFallbackToOriginalBytes(bytes, extension) ? bytes : null;
+    }
+    if (decoded == null) {
+      return _canFallbackToOriginalBytes(bytes, extension) ? bytes : null;
+    }
     final firstFrame = img.Image.from(decoded.getFrame(0), noAnimation: true);
     if (_canUseOriginalBytes(bytes, firstFrame, extension)) {
       return bytes;
@@ -115,6 +122,11 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
     if (image.width > ThumbnailGenerator.thumbWidth) return false;
     if (image.height > ThumbnailGenerator.thumbHeight) return false;
     return MediaFileTypes.canReuseOriginalPreviewBytes(extension);
+  }
+
+  static bool _canFallbackToOriginalBytes(Uint8List bytes, String extension) {
+    if (bytes.length > _smallImageByteLimit) return false;
+    return MediaFileTypes.canFallbackToOriginalPreviewBytes(extension);
   }
 
   /// 缩放并裁剪图片到目标尺寸（居中裁剪）

@@ -22,6 +22,37 @@ class PdfThumbnailGenerator implements ThumbnailGenerator {
   final PdfRenderService _renderService;
   final String? outputDirectory;
 
+  Future<Uint8List?> generatePreview(
+    FileSource source,
+    String relativePath,
+  ) async {
+    try {
+      final bytes = await source.readFile(relativePath);
+      final document = await PdfDocument.openData(bytes);
+
+      try {
+        if (document.isEncrypted || document.pages.isEmpty) {
+          return null;
+        }
+
+        final pngBytes = await _renderService.renderThumbnail(
+          document,
+          ThumbnailGenerator.thumbWidth * 2,
+          ThumbnailGenerator.thumbHeight * 2,
+        );
+        if (pngBytes == null) return null;
+
+        return Isolate.run(() => _resizeAndCropToJpg(pngBytes));
+      } finally {
+        await document.dispose();
+      }
+    } on PdfException catch (_) {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<String?> generate(
     FileSource source,
@@ -29,50 +60,19 @@ class PdfThumbnailGenerator implements ThumbnailGenerator {
     String resourceId,
   ) async {
     try {
-      final bytes = await source.readFile(relativePath);
+      final thumbBytes = await generatePreview(source, relativePath);
+      if (thumbBytes == null) return null;
 
-      // 打开 PDF 文档
-      final document = await PdfDocument.openData(bytes);
+      final outDir = outputDirectory;
+      final thumbDir = outDir != null
+          ? p.join(outDir, 'thumbs')
+          : p.join((await getApplicationCacheDirectory()).path, 'thumbs');
+      await Directory(thumbDir).create(recursive: true);
 
-      try {
-        // 检查加密
-        if (document.isEncrypted || document.pages.isEmpty) {
-          return null;
-        }
+      final thumbFile = File(p.join(thumbDir, 'thumb_$resourceId.jpg'));
+      await thumbFile.writeAsBytes(thumbBytes);
 
-        // 渲染首页缩略图
-        final pngBytes = await _renderService.renderThumbnail(
-          document,
-          ThumbnailGenerator.thumbWidth * 2, // 用稍大尺寸渲染再缩放
-          ThumbnailGenerator.thumbHeight * 2,
-        );
-
-        if (pngBytes == null) return null;
-
-        // 在 Isolate 中缩放裁剪为统一缩略图尺寸
-        final thumbBytes = await Isolate.run(
-          () => _resizeAndCropToJpg(pngBytes),
-        );
-
-        if (thumbBytes == null) return null;
-
-        // 确定输出目录
-        final outDir = outputDirectory;
-        final thumbDir = outDir != null
-            ? p.join(outDir, 'thumbs')
-            : p.join((await getApplicationCacheDirectory()).path, 'thumbs');
-        await Directory(thumbDir).create(recursive: true);
-
-        final thumbFile = File(p.join(thumbDir, 'thumb_$resourceId.jpg'));
-        await thumbFile.writeAsBytes(thumbBytes);
-
-        return thumbFile.path;
-      } finally {
-        await document.dispose();
-      }
-    } on PdfException catch (_) {
-      // pdfrx 在遇到加密 PDF 或其他问题时抛出 PdfException
-      return null;
+      return thumbFile.path;
     } catch (_) {
       return null;
     }

@@ -61,6 +61,8 @@ class ThumbnailRepository {
           bytes = await _previewImage(source, entry.path);
         } else if (MediaFileTypes.isVideo(entry.name)) {
           bytes = await _videoGenerator.generatePreview(source, entry.path);
+        } else if (MediaFileTypes.isPdf(entry.name)) {
+          bytes = await _pdfGenerator.generatePreview(source, entry.path);
         } else {
           bytes = null;
         }
@@ -97,8 +99,15 @@ class ThumbnailRepository {
 
   /// 在 Isolate 中压缩图片到统一缩略图尺寸
   static Uint8List? _compressPreview(Uint8List bytes, String extension) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
+    final img.Image? decoded;
+    try {
+      decoded = img.decodeImage(bytes);
+    } catch (_) {
+      return _canFallbackToOriginalBytes(bytes, extension) ? bytes : null;
+    }
+    if (decoded == null) {
+      return _canFallbackToOriginalBytes(bytes, extension) ? bytes : null;
+    }
     // GIF/WebP 可能包含多帧。缩略图只取已合成的第一帧，
     // noAnimation 防止 resize/crop 继续处理整个动画帧列表。
     final image = img.Image.from(decoded.getFrame(0), noAnimation: true);
@@ -139,6 +148,11 @@ class ThumbnailRepository {
     if (image.width > ThumbnailGenerator.thumbWidth) return false;
     if (image.height > ThumbnailGenerator.thumbHeight) return false;
     return MediaFileTypes.canReuseOriginalPreviewBytes(extension);
+  }
+
+  static bool _canFallbackToOriginalBytes(Uint8List bytes, String extension) {
+    if (bytes.length > _smallImageByteLimit) return false;
+    return MediaFileTypes.canFallbackToOriginalPreviewBytes(extension);
   }
 
   Future<Uint8List?> _previewDirectory(

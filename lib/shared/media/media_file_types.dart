@@ -80,6 +80,11 @@ class MediaFileTypes {
     return extension == '.jpg' || extension == '.jpeg' || extension == '.png';
   }
 
+  static bool canFallbackToOriginalPreviewBytes(String nameOrPath) {
+    final extension = _extension(nameOrPath);
+    return imageExtensions.contains(extension);
+  }
+
   static String _extension(String nameOrPath) {
     if (nameOrPath.startsWith('.') && !nameOrPath.contains('/')) {
       return nameOrPath.toLowerCase();
