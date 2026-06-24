@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import '../../shared/file_source/file_source.dart';
 
@@ -18,16 +17,11 @@ class _VideoStreamEntry {
     required this.fileSource,
     required this.relativePath,
     required this.fileSize,
-  }) : cache = _VideoRangeCache(
-         fileSource: fileSource,
-         relativePath: relativePath,
-         fileSize: fileSize,
-       );
+  });
 
   final FileSource fileSource;
   final String relativePath;
   final int fileSize;
-  final _VideoRangeCache cache;
 }
 
 class _ByteRange {
@@ -37,112 +31,6 @@ class _ByteRange {
   final int end;
 
   int get length => end - start + 1;
-}
-
-class _VideoRangeCache {
-  _VideoRangeCache({
-    required this.fileSource,
-    required this.relativePath,
-    required this.fileSize,
-  });
-
-  final FileSource fileSource;
-  final String relativePath;
-  final int fileSize;
-  final Map<int, Uint8List> _windows = {};
-  final Map<int, Future<Uint8List>> _inFlight = {};
-  final List<int> _lru = [];
-
-  static const int _windowSize = 8 * 1024 * 1024;
-  static const int _maxBytes = 96 * 1024 * 1024;
-
-  Future<Uint8List> read({required int offset, required int length}) async {
-    if (length <= 0 || offset >= fileSize) return Uint8List(0);
-    final boundedLength = min(length, fileSize - offset);
-    final chunks = <Uint8List>[];
-    var cursor = offset;
-    var remaining = boundedLength;
-
-    while (remaining > 0) {
-      final windowStart = _windowStartFor(cursor);
-      final window = await _loadWindow(windowStart);
-      final innerOffset = cursor - windowStart;
-      if (innerOffset >= window.length) break;
-      final take = min(remaining, window.length - innerOffset);
-      chunks.add(
-        Uint8List.fromList(window.sublist(innerOffset, innerOffset + take)),
-      );
-      cursor += take;
-      remaining -= take;
-    }
-
-    _prefetch(_windowStartFor(cursor));
-    if (chunks.isEmpty) return Uint8List(0);
-    if (chunks.length == 1) return chunks.first;
-    final bytes = Uint8List(boundedLength - remaining);
-    var target = 0;
-    for (final chunk in chunks) {
-      bytes.setRange(target, target + chunk.length, chunk);
-      target += chunk.length;
-    }
-    return bytes;
-  }
-
-  Future<Uint8List> _loadWindow(int windowStart) async {
-    final cached = _windows[windowStart];
-    if (cached != null) {
-      _touch(windowStart);
-      return cached;
-    }
-    final loading = _inFlight[windowStart];
-    if (loading != null) return loading;
-
-    final length = min(_windowSize, fileSize - windowStart);
-    final future = _readWindow(windowStart, length);
-    _inFlight[windowStart] = future;
-    try {
-      return await future;
-    } finally {
-      _inFlight.remove(windowStart);
-    }
-  }
-
-  Future<Uint8List> _readWindow(int windowStart, int length) async {
-    final bytes = await fileSource.readRange(
-      relativePath,
-      offset: windowStart,
-      length: length,
-    );
-    _windows[windowStart] = bytes;
-    _touch(windowStart);
-    _trim();
-    return bytes;
-  }
-
-  void _prefetch(int windowStart) {
-    if (windowStart >= fileSize ||
-        _windows.containsKey(windowStart) ||
-        _inFlight.containsKey(windowStart)) {
-      return;
-    }
-    unawaited(_loadWindow(windowStart));
-  }
-
-  int _windowStartFor(int offset) => (offset ~/ _windowSize) * _windowSize;
-
-  void _touch(int windowStart) {
-    _lru.remove(windowStart);
-    _lru.add(windowStart);
-  }
-
-  void _trim() {
-    var total = _windows.values.fold<int>(0, (sum, bytes) => sum + bytes.length);
-    while (total > _maxBytes && _lru.isNotEmpty) {
-      final oldest = _lru.removeAt(0);
-      final removed = _windows.remove(oldest);
-      if (removed != null) total -= removed.length;
-    }
-  }
 }
 
 /// Local HTTP bridge for media_kit playback of non-local FileSource videos.
@@ -257,16 +145,20 @@ class VideoStreamService {
         return;
       }
 
-      const chunkSize = 4 * 1024 * 1024;
-      var offset = range.start;
-      var remaining = range.length;
-      while (remaining > 0) {
-        final length = min(chunkSize, remaining);
-        final chunk = await entry.cache.read(offset: offset, length: length);
-        if (chunk.isEmpty) break;
+      // 流式管道：fileSource.streamRange 产出 1MB chunk，`await for` 循环
+      // 将每个 chunk 直接写入 HTTP 响应。loopback 下 mpv 持续从 socket
+      // 读取以填充 demuxer 缓存；当 demuxer 缓存满时 mpv 减速，socket
+      // 缓冲堆积，`response.add` 自然阻塞，循环暂停读取——形成"读取速率
+      // 匹配播放消耗"的平滑流，消除窗口缓存模式的突发 gap（2x 倍速下
+      // demuxer 缓存桥接不了 8MB 读间隙的根因）。
+      // 同时单条流只占用一个 SMB worker（持久句柄），不再因预取占用两个
+      // worker 而饿死图片加载。
+      await for (final chunk in entry.fileSource.streamRange(
+        entry.relativePath,
+        offset: range.start,
+        length: range.length,
+      )) {
         response.add(chunk);
-        offset += chunk.length;
-        remaining -= chunk.length;
       }
       await response.close();
     } catch (_) {

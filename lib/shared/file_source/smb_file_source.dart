@@ -165,6 +165,17 @@ class SmbFileSource implements FileSource {
   }
 
   @override
+  Stream<Uint8List> streamRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) async* {
+    final pool = await _ensurePool();
+    final smbPath = _toSmbPath(relativePath);
+    yield* pool.streamRange(smbPath, offset: offset, length: length);
+  }
+
+  @override
   Future<bool> testConnection() async {
     final pool = await _ensurePool();
     await pool.echo();
@@ -268,6 +279,11 @@ abstract class SmbPoolClient {
     required int offset,
     required int length,
   });
+  Stream<Uint8List> streamRange(
+    String path, {
+    required int offset,
+    required int length,
+  });
   Future<void> echo();
   Future<void> disconnect();
 }
@@ -296,6 +312,37 @@ class _DartSmbPoolClient implements SmbPoolClient {
     required int offset,
     required int length,
   }) => pool.readFileRange(path, offset: offset, length: length);
+
+  @override
+  Stream<Uint8List> streamRange(
+    String path, {
+    required int offset,
+    required int length,
+  }) async* {
+    // 持久句柄流式读取：一次 open + 循环 1MB pread + 一次 close。
+    // 相比循环 readFileRange（每次 open/close 句柄），网络开销显著降低；
+    // 配合 VideoStreamService 的 `await for` 管道形成自然背压，推送速率
+    // 匹配 mpv 消费速率，消除突发模式与 2x 倍速下的 demuxer underrun。
+    final (handle, size) = await pool.openFileWithSize(path);
+    try {
+      final end = (offset + length).clamp(0, size);
+      var pos = offset.clamp(0, size);
+      const chunkSize = 1024 * 1024;
+      while (pos < end) {
+        final toRead = (end - pos) < chunkSize ? (end - pos) : chunkSize;
+        final chunk = await pool.readFromHandle(
+          handle,
+          offset: pos,
+          length: toRead,
+        );
+        if (chunk.isEmpty) break;
+        yield chunk;
+        pos += chunk.length;
+      }
+    } finally {
+      await pool.closeHandle(handle);
+    }
+  }
 
   @override
   Future<void> echo() => pool.echo();

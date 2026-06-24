@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 /// 视频底部的大范围进度拖动热区。
 ///
-/// 轻点不会跳转；只有形成水平拖动后，才以拖动开始时的播放位置为基准
-/// 相对调整进度，避免按下瞬间跳到 0。
+/// 使用 [HorizontalDragGestureRecognizer] 直接与 PageView 的横向滚动竞争
+/// Gesture Arena（同类型 recognizer，内层优先），确保拖动只触发 seek 不翻页。
+///
+/// 轻点不由本组件处理；外层 [GestureDetector] 负责 tap / double-tap / long-press。
 class VideoSeekGestureArea extends StatefulWidget {
   const VideoSeekGestureArea({
     super.key,
@@ -13,10 +15,6 @@ class VideoSeekGestureArea extends StatefulWidget {
     required this.onScrubUpdate,
     required this.onScrubEnd,
     required this.currentPosition,
-    this.onTap,
-    this.onLongPressStart,
-    this.onLongPressMoveUpdate,
-    this.onLongPressEnd,
   });
 
   final Duration position;
@@ -25,10 +23,6 @@ class VideoSeekGestureArea extends StatefulWidget {
   final ValueChanged<Duration> onScrubUpdate;
   final ValueChanged<Duration> onScrubEnd;
   final Duration Function() currentPosition;
-  final VoidCallback? onTap;
-  final GestureLongPressStartCallback? onLongPressStart;
-  final GestureLongPressMoveUpdateCallback? onLongPressMoveUpdate;
-  final GestureLongPressEndCallback? onLongPressEnd;
 
   @override
   State<VideoSeekGestureArea> createState() => _VideoSeekGestureAreaState();
@@ -37,77 +31,69 @@ class VideoSeekGestureArea extends StatefulWidget {
 class _VideoSeekGestureAreaState extends State<VideoSeekGestureArea> {
   Duration _dragStartPosition = Duration.zero;
   Duration _latestPosition = Duration.zero;
-  Offset _dragDistance = Offset.zero;
+  double _dragDeltaX = 0;
   bool _scrubbing = false;
-  bool _longPressing = false;
 
+  /// 水平拖动起步门槛（px）：累计水平位移需超过此值才进入 scrubbing，
+  /// 避免轻触/微动误触发 seek（旧代码回归）。
   static const double _scrubStartThreshold = 18;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) => GestureDetector(
-        key: const ValueKey('video-seek-zone'),
-        behavior: HitTestBehavior.translucent,
-        excludeFromSemantics: true,
-        onTap: widget.onTap,
-        onLongPressStart: (details) {
-          _longPressing = true;
-          widget.onLongPressStart?.call(details);
-        },
-        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
-        onLongPressEnd: (details) {
-          _longPressing = false;
-          widget.onLongPressEnd?.call(details);
-        },
-        onLongPressCancel: () => _longPressing = false,
-        onPanStart: widget.duration == Duration.zero
-            ? null
-            : (_) {
-                _dragStartPosition = widget.currentPosition();
-                _latestPosition = _dragStartPosition;
-                _dragDistance = Offset.zero;
-                _scrubbing = false;
-              },
-        onPanUpdate: widget.duration == Duration.zero
-            ? null
-            : (details) {
-                if (_longPressing) return;
-                _dragDistance += details.delta;
-                if (!_scrubbing) {
-                  final horizontal = _dragDistance.dx.abs();
-                  final vertical = _dragDistance.dy.abs();
-                  if (horizontal < _scrubStartThreshold ||
-                      horizontal <= vertical * 1.4) {
-                    return;
-                  }
-                  _scrubbing = true;
-                  widget.onScrubStart(_dragStartPosition);
-                }
-                final width = constraints.maxWidth;
-                if (width <= 0) return;
-                final delta =
-                    widget.duration.inMilliseconds *
-                    (_dragDistance.dx / width);
-                final targetMs = (_dragStartPosition.inMilliseconds + delta)
-                    .round()
-                    .clamp(0, widget.duration.inMilliseconds);
-                _latestPosition = Duration(milliseconds: targetMs);
-                widget.onScrubUpdate(_latestPosition);
-              },
-        onPanEnd: widget.duration == Duration.zero
-            ? null
-            : (_) {
-                if (_scrubbing) widget.onScrubEnd(_latestPosition);
-                _scrubbing = false;
-              },
-        onPanCancel: widget.duration == Duration.zero
-            ? null
-            : () {
-                if (_scrubbing) widget.onScrubEnd(_latestPosition);
-                _scrubbing = false;
-              },
-      ),
+      builder: (context, constraints) {
+        final enabled = widget.duration > Duration.zero;
+        return GestureDetector(
+          key: const ValueKey('video-seek-zone'),
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          // 横向拖动 → 进度 scrubbing（与 PageView 横向滚动同类型竞争，内层胜出）
+          onHorizontalDragStart:
+              enabled
+                  ? (_) {
+                      // 仅记录起点，不触发 onScrubStart；需累计超过门槛才算 scrubbing。
+                      _dragStartPosition = widget.currentPosition();
+                      _latestPosition = _dragStartPosition;
+                      _dragDeltaX = 0;
+                      _scrubbing = false;
+                    }
+                  : null,
+          onHorizontalDragUpdate:
+              enabled
+                  ? (details) {
+                      final width = constraints.maxWidth;
+                      if (width <= 0) return;
+                      _dragDeltaX += details.delta.dx;
+                      if (!_scrubbing) {
+                        if (_dragDeltaX.abs() < _scrubStartThreshold) return;
+                        _scrubbing = true;
+                        widget.onScrubStart(_dragStartPosition);
+                      }
+                      final deltaMs = widget.duration.inMilliseconds *
+                          (_dragDeltaX / width);
+                      final targetMs = (_dragStartPosition.inMilliseconds +
+                              deltaMs.round())
+                          .clamp(0, widget.duration.inMilliseconds);
+                      _latestPosition = Duration(milliseconds: targetMs);
+                      widget.onScrubUpdate(_latestPosition);
+                    }
+                  : null,
+          onHorizontalDragEnd:
+              enabled
+                  ? (_) {
+                      if (_scrubbing) widget.onScrubEnd(_latestPosition);
+                      _scrubbing = false;
+                    }
+                  : null,
+          onHorizontalDragCancel:
+              enabled
+                  ? () {
+                      if (_scrubbing) widget.onScrubEnd(_latestPosition);
+                      _scrubbing = false;
+                    }
+                  : null,
+        );
+      },
     );
   }
 }

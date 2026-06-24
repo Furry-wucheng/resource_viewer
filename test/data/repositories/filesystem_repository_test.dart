@@ -175,6 +175,13 @@ class _CountingFileSource implements FileSource {
   }) => throw UnimplementedError();
 
   @override
+  Stream<Uint8List> streamRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FileEntry?> stat(String relativePath) => throw UnimplementedError();
 
   @override

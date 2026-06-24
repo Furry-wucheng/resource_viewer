@@ -152,6 +152,39 @@ class LocalFileSource implements FileSource {
   }
 
   @override
+  Stream<Uint8List> streamRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) async* {
+    if (offset < 0 || length < 0) {
+      throw ArgumentError('offset and length must be non-negative');
+    }
+    if (length == 0) return;
+
+    final file = File(_resolvePath(relativePath));
+    if (!await file.exists()) {
+      throw FileSystemException('文件不存在', file.path);
+    }
+
+    final randomAccessFile = await file.open(mode: FileMode.read);
+    try {
+      await randomAccessFile.setPosition(offset);
+      var remaining = length;
+      const chunkSize = 1024 * 1024;
+      while (remaining > 0) {
+        final toRead = remaining < chunkSize ? remaining : chunkSize;
+        final chunk = await randomAccessFile.read(toRead);
+        if (chunk.isEmpty) break;
+        yield Uint8List.fromList(chunk);
+        remaining -= chunk.length;
+      }
+    } finally {
+      await randomAccessFile.close();
+    }
+  }
+
+  @override
   Future<bool> testConnection() async {
     final dir = Directory(rootPath);
     return dir.exists();

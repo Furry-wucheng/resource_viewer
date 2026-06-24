@@ -25,7 +25,7 @@ void main() {
       await service.dispose();
     });
 
-    test('translates HTTP Range requests to FileSource.readRange', () async {
+    test('translates HTTP Range requests to FileSource.streamRange', () async {
       final handle = await service.register(
         fileSource: fileSource,
         relativePath: 'movies/movie.mp4',
@@ -45,12 +45,12 @@ void main() {
       expect(bytes, List<int>.generate(10, (index) => index + 10));
       expect(fileSource.reads.single, (
         path: 'movies/movie.mp4',
-        offset: 0,
-        length: 100,
+        offset: 10,
+        length: 10,
       ));
     });
 
-    test('serves nearby ranges from the video range cache', () async {
+    test('serves each range request via an independent stream', () async {
       final handle = await service.register(
         fileSource: fileSource,
         relativePath: 'movies/movie.mp4',
@@ -69,7 +69,13 @@ void main() {
 
       expect(secondResponse.statusCode, HttpStatus.partialContent);
       expect(secondBytes, List<int>.generate(10, (index) => index + 20));
-      expect(fileSource.reads, hasLength(1));
+      // 流式后端无窗口缓存：两次请求各自发起一次 streamRange 调用。
+      expect(fileSource.reads, hasLength(2));
+      expect(fileSource.reads.last, (
+        path: 'movies/movie.mp4',
+        offset: 20,
+        length: 10,
+      ));
     });
 
     test('returns 416 for unsatisfiable ranges', () async {
@@ -150,6 +156,26 @@ class _FakeFileSource implements FileSource {
     reads.add((path: relativePath, offset: offset, length: length));
     final end = (offset + length).clamp(0, bytes.length);
     return Uint8List.sublistView(bytes, offset, end);
+  }
+
+  @override
+  Stream<Uint8List> streamRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) async* {
+    reads.add((path: relativePath, offset: offset, length: length));
+    final end = (offset + length).clamp(0, bytes.length);
+    final slice = Uint8List.sublistView(bytes, offset, end);
+    const chunkSize = 1024 * 1024;
+    var pos = 0;
+    while (pos < slice.length) {
+      final toRead = (slice.length - pos) < chunkSize
+          ? (slice.length - pos)
+          : chunkSize;
+      yield Uint8List.sublistView(slice, pos, pos + toRead);
+      pos += toRead;
+    }
   }
 
   @override

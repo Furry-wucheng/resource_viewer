@@ -97,7 +97,15 @@ class _ViewerPageState extends State<ViewerPage> {
   PageDirection? _lastPageDirection;
   final Map<int, double> _imageAspectRatios = {};
   final Set<int> _aspectRatioLoads = {};
+  /// 已放大（scale > 1）的页索引。用于在 scale=1 时禁用 InteractiveViewer
+  /// 的 pan，避免 ScaleGestureRecognizer 抢占 PageView 的水平滑动。
+  final Set<int> _zoomedPages = {};
   bool? _lastToolbarSystemUiVisible;
+
+  /// PageView 是否正在拖动/滚动中。拖动期间跳过 jumpToPage 修正，避免
+  /// aspect ratio 异步到达触发 positions 变化、把正在拖的页面弹回原位。
+  bool _isDragging = false;
+  VoidCallback? _scrollingCallback;
 
   static const double _wideImageAspectRatio = 1.2;
 
@@ -125,9 +133,30 @@ class _ViewerPageState extends State<ViewerPage> {
     _pageController = PageController(initialPage: widget.initialPage);
     _viewModel.init();
     _loadViewerSettings();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _focusNode.requestFocus(),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+      _attachScrollingListener();
+    });
+  }
+
+  void _attachScrollingListener() {
+    if (!_pageController.hasClients) return;
+    _detachScrollingListener();
+    final notifier = _pageController.position.isScrollingNotifier;
+    void onChanged() {
+      _isDragging = notifier.value;
+    }
+
+    notifier.addListener(onChanged);
+    _scrollingCallback = onChanged;
+  }
+
+  void _detachScrollingListener() {
+    if (_scrollingCallback == null || !_pageController.hasClients) return;
+    _pageController.position.isScrollingNotifier.removeListener(
+      _scrollingCallback!,
     );
+    _scrollingCallback = null;
   }
 
   Future<void> _loadViewerSettings() async {
@@ -153,10 +182,37 @@ class _ViewerPageState extends State<ViewerPage> {
         domain.DoublePageMode.double => DoublePageMode.double,
       };
 
+  domain.DoublePageMode _toDomainDoublePageMode(DoublePageMode mode) =>
+      switch (mode) {
+        DoublePageMode.auto => domain.DoublePageMode.auto,
+        DoublePageMode.single => domain.DoublePageMode.single,
+        DoublePageMode.double => domain.DoublePageMode.double,
+      };
+
+  /// 查看器内切换翻页方向：即时应用 + 持久化到全局配置。
+  void _changePageDirection(PageDirection direction) {
+    _viewModel.applyPageDirection(direction);
+    final settingsRepo = context.read<SettingsRepository>();
+    final domainDirection = direction == PageDirection.rightToLeft
+        ? domain.PageDirection.rightToLeft
+        : domain.PageDirection.leftToRight;
+    unawaited(settingsRepo.updatePageDirection(domainDirection));
+  }
+
+  /// 查看器内切换双页模式：即时应用 + 持久化到全局配置。
+  void _changeDoublePageMode(DoublePageMode mode) {
+    _viewModel.applyDoublePageMode(mode);
+    final settingsRepo = context.read<SettingsRepository>();
+    unawaited(
+      settingsRepo.updateDoublePageMode(_toDomainDoublePageMode(mode)),
+    );
+  }
+
   @override
   void dispose() {
     _singleTapTimer?.cancel();
     _chapterHintTimer?.cancel();
+    _detachScrollingListener();
     _pageController.dispose();
     _focusNode.dispose();
     for (final controller in _transformControllers.values) {
@@ -182,29 +238,42 @@ class _ViewerPageState extends State<ViewerPage> {
             var positions = _viewerPositions(vm, requestedDoublePage);
             if (requestedDoublePage &&
                 !positions.any((position) => position.isDouble)) {
-              isDoublePage = false;
-              positions = _viewerPositions(vm, isDoublePage);
+              // 拖动中冻结 isDoublePage 翻转：翻转会改变 PageView 的
+              // ValueKey（double-page-view ↔ page-view）→ element 销毁
+              // 重建 → 正在进行的拖动直接丢失 = "划不动"。
+              if (_isDragging) {
+                isDoublePage = _lastDoublePage;
+                positions = _lastPositions;
+              } else {
+                isDoublePage = false;
+                positions = _viewerPositions(vm, isDoublePage);
+              }
             }
             _lastPositions = positions;
             final canSyncViewport =
                 vm.viewerState == ViewerState.loaded && vm.totalPages > 0;
-            if (canSyncViewport &&
-                (_lastDoublePage != isDoublePage ||
-                    _lastPageDirection != vm.pageDirection)) {
-              _lastDoublePage = isDoublePage;
-              _lastPageDirection = vm.pageDirection;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && _pageController.hasClients) {
-                  _pageController.jumpToPage(
-                    _visualPositionForPage(
-                      vm.currentPage,
-                      vm,
-                      isDoublePage,
-                      positions,
-                    ),
-                  );
-                }
-              });
+            if (canSyncViewport) {
+              final modeChanged = _lastDoublePage != isDoublePage ||
+                  _lastPageDirection != vm.pageDirection;
+              // 仅在用户主动切换模式（单页↔双页 / 阅读方向）时 jumpToPage
+              // 修正。aspect ratio 异步到达导致的配对变化不主动修正——
+              // 让 PageView 自然适应 itemCount 变化，避免 jumpToPage 打断
+              // 用户操作（"划一半弹回"/"刚要拖就被拉回"）。
+              if (modeChanged && !_isDragging) {
+                _lastDoublePage = isDoublePage;
+                _lastPageDirection = vm.pageDirection;
+                final expectedVisual = _visualPositionForPage(
+                  vm.currentPage,
+                  vm,
+                  isDoublePage,
+                  positions,
+                );
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _pageController.hasClients) {
+                    _pageController.jumpToPage(expectedVisual);
+                  }
+                });
+              }
             }
 
             return KeyboardListener(
@@ -309,10 +378,8 @@ class _ViewerPageState extends State<ViewerPage> {
               onFavoriteTap: widget.onFavoriteTap,
               pageDirection: vm.pageDirection,
               doublePageMode: vm.doublePageModeSetting,
-              onPageDirectionChanged:
-                  vm.applyPageDirection, // 查看器内临时切换，不覆盖全局默认值
-              onDoublePageModeChanged:
-                  vm.applyDoublePageMode, // 查看器内临时切换，不覆盖全局默认值
+              onPageDirectionChanged: _changePageDirection,
+              onDoublePageModeChanged: _changeDoublePageMode,
             ),
           ),
         if (vm.isToolbarVisible && !isVideo && vm.totalPages > 1)
@@ -453,22 +520,53 @@ class _ViewerPageState extends State<ViewerPage> {
     MemoryImage image, {
     Alignment alignment = Alignment.center,
   }) {
-    return InteractiveViewer(
-      transformationController: _transformControllers.putIfAbsent(
-        index,
-        TransformationController.new,
+    // 预创建 controller（双击缩放需要它），但不一定包 InteractiveViewer。
+    final controller = _transformControllers.putIfAbsent(
+      index,
+      TransformationController.new,
+    );
+    final zoomed = _zoomedPages.contains(index);
+    final content = Align(
+      alignment: alignment,
+      child: Image(
+        image: image,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _buildPageError(vm, index),
       ),
+    );
+
+    // scale=1 时不包 InteractiveViewer：InteractiveViewer 无条件注册
+    // ScaleGestureRecognizer（interactive_viewer.dart:1090-1094，即使
+    // panEnabled:false/scaleEnabled:false 也在竞技场中），会 claim 单指
+    // 水平拖动 → PageView 的 HorizontalDragGestureRecognizer 拿不到 →
+    // "划不动"。只有放大后才包（此时阻断翻页是合理的——用户在查看细节）。
+    // 双击缩放通过 _handleDoubleTap 直接设置 controller.value，不走
+    // ScaleGestureRecognizer，所以 scale=1 时无需 InteractiveViewer 也能
+    // 启动缩放。
+    if (!zoomed) return content;
+
+    return InteractiveViewer(
+      transformationController: controller,
+      panEnabled: true,
+      scaleEnabled: true,
       minScale: 0.5,
       maxScale: 5,
-      child: Align(
-        alignment: alignment,
-        child: Image(
-          image: image,
-          fit: BoxFit.contain,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildPageError(vm, index),
-        ),
-      ),
+      onInteractionEnd: (_) {
+        final c = _transformControllers[index];
+        if (c == null) return;
+        final isZoomed = c.value.getMaxScaleOnAxis() > 1;
+        if (isZoomed != _zoomedPages.contains(index)) {
+          setState(() {
+            if (isZoomed) {
+              _zoomedPages.add(index);
+            } else {
+              _zoomedPages.remove(index);
+            }
+          });
+        }
+      },
+      child: content,
     );
   }
 
@@ -796,8 +894,10 @@ class _ViewerPageState extends State<ViewerPage> {
   void _handleDoubleTap(Offset position) {
     final controller = _transformControllers[_viewModel.currentPage];
     if (controller == null) return;
+    final page = _viewModel.currentPage;
     if (controller.value.getMaxScaleOnAxis() > 1) {
       controller.value = Matrix4.identity();
+      setState(() => _zoomedPages.remove(page));
     } else {
       const scale = 2.0;
       controller.value = Matrix4.identity()
@@ -808,13 +908,21 @@ class _ViewerPageState extends State<ViewerPage> {
           1,
         )
         ..scaleByDouble(scale, scale, scale, 1);
+      setState(() => _zoomedPages.add(page));
     }
   }
 
   void _resetZoom() {
+    if (_zoomedPages.isEmpty) {
+      for (final controller in _transformControllers.values) {
+        controller.value = Matrix4.identity();
+      }
+      return;
+    }
     for (final controller in _transformControllers.values) {
       controller.value = Matrix4.identity();
     }
+    setState(_zoomedPages.clear);
   }
 
   bool _doublePageRequested(ViewerViewModel vm) {

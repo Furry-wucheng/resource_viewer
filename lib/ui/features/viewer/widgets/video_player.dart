@@ -81,7 +81,13 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       _lastVisiblePosition = position;
       final override = _displayPositionOverride;
       if (override == null || _isScrubbing) return;
-      if ((position - override).abs() < const Duration(milliseconds: 500)) {
+      // position 已到达或超过 override（含 500ms 容差）时清除显示覆盖：
+      //   - seek 后 mpv 报告新位置（≈override）→ 清，显示交还 stream
+      //   - 视频继续前进超过 override → 清（原 abs<500ms 条件在此场景
+      //     永不满足，导致 override 残留、Slider 显示停在旧 target）
+      //   - seek 未生效、position 仍是旧值（< override-500ms）→ 保留
+      //     override，避免显示回跳到旧位置
+      if (position >= override - const Duration(milliseconds: 500)) {
         _clearDisplayPositionOverride();
       }
     });
@@ -178,10 +184,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                   onScrubStart: _startScrub,
                   onScrubUpdate: _updateScrub,
                   onScrubEnd: _endScrub,
-                  onTap: widget.onToggleToolbar,
-                  onLongPressStart: _startSpeedMode,
-                  onLongPressMoveUpdate: _updateSpeedMode,
-                  onLongPressEnd: (_) => _endSpeedMode(),
                 ),
               ),
             ),
@@ -255,13 +257,17 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _displayPositionOverride = null;
     _wasPlayingBeforeSpeedMode = _player.state.playing;
     _setSpeed(2);
-    unawaited(_player.play());
+    // 仅在未播放时才调 play：已在播放时 play() 是冗余的第二次全局锁竞争，
+    // 省掉这次锁排队可减小倍速切换的停顿（mpv 重锁音频重采样器的固有
+    // 开销仍在，但少一次 FFI 往返 + 锁等待）。
+    if (!_wasPlayingBeforeSpeedMode) unawaited(_player.play());
     setState(() => _speedMode = true);
   }
 
   Future<void> _open(VideoMediaSource source) async {
     await _revokeStreamHandle();
     if (!mounted) return;
+
     if (source.kind == VideoMediaSourceKind.localFile) {
       await _player.open(Media(source.path!), play: widget.active);
       _syncCachedPlaybackState();
@@ -398,9 +404,15 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       _lastVisiblePosition;
 
   Duration _currentPlaybackPosition() {
+    // 优先使用 _lastVisiblePosition：它由 position stream 实时维护，
+    // 且 seek 后被显式设为目标位置，是"最近已知真实播放位置"。
+    // state.position 仅由 mpv 的 time-pos 事件异步更新——seek() 只发
+    // 命令并 await 确认，不更新 state.position，所以 seek 完成后短暂
+    // 保持拖动前的旧值，直接读取会让下一次拖动从旧位置起步。
+    if (_lastVisiblePosition > Duration.zero) return _lastVisiblePosition;
     final position = _player.state.position;
     if (position > Duration.zero) return position;
-    return _lastVisiblePosition;
+    return Duration.zero;
   }
 
   Duration _displayDuration(Duration? streamDuration) {

@@ -35,6 +35,33 @@ abstract class FileSource {
     required int length,
   });
 
+  /// 流式读取文件的一段字节（适用于视频 HTTP Range 代理）。
+  ///
+  /// 与 [readRange] 不同，本方法以 chunk 流形式产出数据，调用方可在
+  /// 每个 chunk 后立即转发，形成自然背压：当下游（如 mpv demuxer）
+  /// 消费变慢时 socket 缓冲堆积，`await for` 循环自动暂停读取，从而
+  /// 让推送速率匹配消费速率、避免突发模式。
+  ///
+  /// 默认实现用 [readRange] 按 1MB 循环模拟；持久句柄实现（SMB 等）
+  /// 应覆盖此方法以避免每 MB 重新打开/关闭文件句柄。
+  Stream<Uint8List> streamRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) async* {
+    const chunkSize = 1024 * 1024;
+    var pos = offset;
+    var remaining = length;
+    while (remaining > 0) {
+      final toRead = remaining < chunkSize ? remaining : chunkSize;
+      final bytes = await readRange(relativePath, offset: pos, length: toRead);
+      if (bytes.isEmpty) break;
+      yield bytes;
+      pos += bytes.length;
+      remaining -= bytes.length;
+    }
+  }
+
   /// 测试连接是否可达
   ///
   /// 本地源：检查路径是否存在。
