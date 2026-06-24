@@ -55,6 +55,7 @@ const _$ResourceTypeEnumMap = {
 const _$OrganizationModeEnumMap = {
   OrganizationMode.direct: 'direct',
   OrganizationMode.chapter: 'chapter',
+  OrganizationMode.chapterGallery: 'chapterGallery',
   OrganizationMode.flatgrid: 'flatgrid',
   OrganizationMode.gallery: 'gallery',
 };

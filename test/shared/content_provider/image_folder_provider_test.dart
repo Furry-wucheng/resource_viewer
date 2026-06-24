@@ -13,7 +13,9 @@ void main() {
   late ImageFolderProvider provider;
 
   setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('image_folder_provider_test_');
+    tempDir = await Directory.systemTemp.createTemp(
+      'image_folder_provider_test_',
+    );
     fileSource = LocalFileSource(
       sourceId: 'test-source',
       rootPath: tempDir.path,
@@ -30,7 +32,9 @@ void main() {
   /// 创建测试图片文件
   Future<void> createTestImage(String name, {List<int>? bytes}) async {
     final file = File(p.join(tempDir.path, name));
-    await file.writeAsBytes(bytes ?? Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0])); // JPEG magic bytes
+    await file.writeAsBytes(
+      bytes ?? Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0]),
+    ); // JPEG magic bytes
   }
 
   group('ImageFolderProvider', () {
@@ -38,12 +42,13 @@ void main() {
       await createTestImage('a.jpg');
       await createTestImage('b.png');
       await createTestImage('c.gif');
+      await createTestImage('d.avif');
       await createTestImage('unsupported.txt');
 
       provider = ImageFolderProvider(fileSource: fileSource, folderPath: '');
       await provider.load();
 
-      expect(provider.pageCount, 3);
+      expect(provider.pageCount, 4);
     });
 
     test('loadPage 返回正确图片字节', () async {
@@ -64,7 +69,10 @@ void main() {
       await File(p.join(album.path, '2.jpg')).writeAsBytes([2]);
       await File(p.join(album.path, '10.jpg')).writeAsBytes([10]);
 
-      provider = ImageFolderProvider(fileSource: fileSource, folderPath: 'album');
+      provider = ImageFolderProvider(
+        fileSource: fileSource,
+        folderPath: 'album',
+      );
       await provider.load();
 
       expect(provider.pageCount, 3);
@@ -118,10 +126,7 @@ void main() {
       await provider.load();
       await provider.dispose();
 
-      expect(
-        () => provider.loadPage(0),
-        throwsStateError,
-      );
+      expect(() => provider.loadPage(0), throwsStateError);
     });
 
     test('index 越界抛 RangeError', () async {
@@ -130,23 +135,14 @@ void main() {
       provider = ImageFolderProvider(fileSource: fileSource, folderPath: '');
       await provider.load();
 
-      expect(
-        () => provider.loadPage(1),
-        throwsRangeError,
-      );
-      expect(
-        () => provider.loadPage(-1),
-        throwsRangeError,
-      );
+      expect(() => provider.loadPage(1), throwsRangeError);
+      expect(() => provider.loadPage(-1), throwsRangeError);
     });
 
     test('load 前访问 pageCount 抛 StateError', () {
       provider = ImageFolderProvider(fileSource: fileSource, folderPath: '');
 
-      expect(
-        () => provider.pageCount,
-        throwsStateError,
-      );
+      expect(() => provider.pageCount, throwsStateError);
     });
   });
 }

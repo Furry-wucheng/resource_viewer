@@ -98,7 +98,8 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
       resource = updated;
     }
 
-    if (organizationMode == domain.OrganizationMode.chapter) {
+    if (organizationMode == domain.OrganizationMode.chapter ||
+        organizationMode == domain.OrganizationMode.chapterGallery) {
       final supportResult = await organizationRepo.hasSubdirectories(
         fileSource,
         resource.relativePath,
@@ -123,6 +124,7 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
 
     switch (organizationMode) {
       case domain.OrganizationMode.chapter:
+      case domain.OrganizationMode.chapterGallery:
         await _pushChapterList(resource, fileSource);
       case domain.OrganizationMode.flatgrid:
         await _pushFlatGrid(resource, fileSource);

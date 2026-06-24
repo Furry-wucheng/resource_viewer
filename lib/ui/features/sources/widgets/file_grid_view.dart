@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'dart:typed_data';
 
 import '../../../../domain/models/file_entry.dart';
 import '../../../../domain/models/tag.dart';
+import '../../../../shared/media/media_file_types.dart';
 
 /// 文件网格视图组件
 ///
@@ -322,23 +322,15 @@ class _FileGridItem extends StatelessWidget {
 
   /// 构建文件图标
   static Widget _buildFileTypeBadge(String fileName) {
-    final ext = fileName.toLowerCase();
     IconData icon;
     Color color;
-    if (ext.endsWith('.pdf')) {
+    if (MediaFileTypes.isPdf(fileName)) {
       icon = Icons.picture_as_pdf;
       color = Colors.red;
-    } else if (ext.endsWith('.mp4') ||
-        ext.endsWith('.mkv') ||
-        ext.endsWith('.mov') ||
-        ext.endsWith('.avi') ||
-        ext.endsWith('.wmv') ||
-        ext.endsWith('.webm')) {
+    } else if (MediaFileTypes.isVideo(fileName)) {
       icon = Icons.movie;
       color = Colors.blue;
-    } else if (ext.endsWith('.zip') ||
-        ext.endsWith('.rar') ||
-        ext.endsWith('.7z')) {
+    } else if (MediaFileTypes.isArchive(fileName)) {
       icon = Icons.archive;
       color = Colors.orange;
     } else {
@@ -381,40 +373,24 @@ class _FileGridItem extends StatelessWidget {
       return const Icon(Icons.folder, color: Colors.amber, size: 48);
     }
 
-    final ext = p.extension(entry.name).toLowerCase();
     final IconData iconData;
     final Color color;
 
-    switch (ext) {
-      case '.jpg':
-      case '.jpeg':
-      case '.png':
-      case '.gif':
-      case '.webp':
-      case '.bmp':
-        iconData = Icons.image;
-        color = Colors.green;
-      case '.pdf':
-        iconData = Icons.picture_as_pdf;
-        color = Colors.red;
-      case '.mp4':
-      case '.mkv':
-      case '.avi':
-      case '.mov':
-      case '.wmv':
-      case '.webm':
-        iconData = Icons.video_file;
-        color = Colors.blue;
-      case '.zip':
-      case '.rar':
-      case '.7z':
-      case '.tar':
-      case '.gz':
-        iconData = Icons.archive;
-        color = Colors.orange;
-      default:
-        iconData = Icons.insert_drive_file;
-        color = Colors.grey;
+    if (MediaFileTypes.isImage(entry.name)) {
+      iconData = Icons.image;
+      color = Colors.green;
+    } else if (MediaFileTypes.isPdf(entry.name)) {
+      iconData = Icons.picture_as_pdf;
+      color = Colors.red;
+    } else if (MediaFileTypes.isVideo(entry.name)) {
+      iconData = Icons.video_file;
+      color = Colors.blue;
+    } else if (MediaFileTypes.isArchive(entry.name)) {
+      iconData = Icons.archive;
+      color = Colors.orange;
+    } else {
+      iconData = Icons.insert_drive_file;
+      color = Colors.grey;
     }
 
     return Icon(iconData, color: color, size: 48);

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'dart:typed_data';
 
 import '../../../../domain/models/file_entry.dart';
 import '../../../../domain/models/tag.dart';
+import '../../../../shared/media/media_file_types.dart';
 
 /// 文件列表视图组件
 ///
@@ -237,33 +237,19 @@ class _FileListViewState extends State<FileListView> {
   }
 
   IconData _getFileIcon(FileEntry entry) {
-    return switch (p.extension(entry.name).toLowerCase()) {
-      '.jpg' || '.jpeg' || '.png' || '.gif' || '.webp' || '.bmp' => Icons.image,
-      '.pdf' => Icons.picture_as_pdf,
-      '.mp4' ||
-      '.mkv' ||
-      '.avi' ||
-      '.mov' ||
-      '.wmv' ||
-      '.webm' => Icons.video_file,
-      '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Icons.archive,
-      _ => Icons.insert_drive_file,
-    };
+    if (MediaFileTypes.isImage(entry.name)) return Icons.image;
+    if (MediaFileTypes.isPdf(entry.name)) return Icons.picture_as_pdf;
+    if (MediaFileTypes.isVideo(entry.name)) return Icons.video_file;
+    if (MediaFileTypes.isArchive(entry.name)) return Icons.archive;
+    return Icons.insert_drive_file;
   }
 
   Color _getFileIconColor(FileEntry entry) {
-    return switch (p.extension(entry.name).toLowerCase()) {
-      '.jpg' ||
-      '.jpeg' ||
-      '.png' ||
-      '.gif' ||
-      '.webp' ||
-      '.bmp' => Colors.green,
-      '.pdf' => Colors.red,
-      '.mp4' || '.mkv' || '.avi' || '.mov' || '.wmv' || '.webm' => Colors.blue,
-      '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => Colors.orange,
-      _ => Colors.grey,
-    };
+    if (MediaFileTypes.isImage(entry.name)) return Colors.green;
+    if (MediaFileTypes.isPdf(entry.name)) return Colors.red;
+    if (MediaFileTypes.isVideo(entry.name)) return Colors.blue;
+    if (MediaFileTypes.isArchive(entry.name)) return Colors.orange;
+    return Colors.grey;
   }
 
   /// 构建副标题（文件大小 + 标签芯片）

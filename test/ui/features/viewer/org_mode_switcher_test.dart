@@ -22,6 +22,10 @@ void main() {
     await tester.pump();
     expect(selected, isNull);
 
+    await tester.tap(find.text('章廊'));
+    await tester.pump();
+    expect(selected, isNull);
+
     await tester.tap(find.text('画廊'));
     await tester.pump();
     expect(selected, OrganizationMode.gallery);

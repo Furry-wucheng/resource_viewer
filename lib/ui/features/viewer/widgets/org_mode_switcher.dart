@@ -4,7 +4,7 @@ import '../../../../domain/models/resource.dart';
 
 /// 组织模式切换器 — 与 design/chapter-list.html / flat-grid.html 的 .mode-switcher 一致
 ///
-/// 三个并排按钮（章节/平铺/画廊），选中项白色凸起，未选中项灰色扁平。
+/// 并排模式按钮，选中项白色凸起，未选中项灰色扁平。
 class OrgModeSwitcher extends StatelessWidget {
   const OrgModeSwitcher({
     super.key,
@@ -35,6 +35,13 @@ class OrgModeSwitcher extends StatelessWidget {
             OrganizationMode.chapter,
             '章节',
             Icons.menu_book_outlined,
+            enabled: chapterEnabled,
+          ),
+          _buildOption(
+            context,
+            OrganizationMode.chapterGallery,
+            '章廊',
+            Icons.auto_stories_outlined,
             enabled: chapterEnabled,
           ),
           _buildOption(

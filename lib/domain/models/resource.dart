@@ -15,6 +15,7 @@ enum ResourceType {
 enum OrganizationMode {
   direct, // 直接阅读
   chapter, // 章节模式
+  chapterGallery, // 章节画廊模式
   flatgrid, // 平铺网格
   gallery, // 画廊模式
 }

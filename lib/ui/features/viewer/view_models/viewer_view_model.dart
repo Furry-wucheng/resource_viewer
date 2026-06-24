@@ -8,6 +8,8 @@ import '../../../../shared/content_provider/content_provider.dart';
 import '../../../../shared/content_provider/viewer_media_item.dart';
 import '../../../core/view_models/base_view_model.dart';
 
+typedef NavigateChapter = void Function(int chapterIndex, bool openAtEnd);
+
 enum ViewerState { loading, loaded, error }
 
 const _kPageDirectionKey = 'page_direction';
@@ -42,11 +44,17 @@ class ViewerViewModel extends BaseViewModel {
     required List<ViewerMediaItem> items,
     int initialPage = 0,
     Future<void> Function()? onDispose,
+    List<Chapter>? chapters,
+    int? currentChapterIndex,
+    NavigateChapter? onNavigateChapter,
   }) => ViewerViewModel._media(
     title: title,
     items: items,
     initialPage: initialPage,
     onDispose: onDispose,
+    chapters: chapters,
+    currentChapterIndex: currentChapterIndex,
+    onNavigateChapter: onNavigateChapter,
   );
 
   ViewerViewModel._media({
@@ -54,6 +62,9 @@ class ViewerViewModel extends BaseViewModel {
     required this._items,
     required this.initialPage,
     required this._onDispose,
+    this.chapters,
+    this.currentChapterIndex,
+    this.onNavigateChapter,
   }) : _provider = null,
        _currentPage = initialPage;
 
@@ -72,7 +83,7 @@ class ViewerViewModel extends BaseViewModel {
   int? currentChapterIndex;
 
   /// 跨章节导航回调
-  void Function(int chapterIndex)? onNavigateChapter;
+  NavigateChapter? onNavigateChapter;
 
   /// 获取下一章名称
   String? getNextChapterName() {

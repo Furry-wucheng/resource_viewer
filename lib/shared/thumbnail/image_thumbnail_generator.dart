@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../file_source/file_source.dart';
+import '../media/media_file_types.dart';
 import 'thumbnail_generator.dart';
 
 /// 图片缩略图生成器
@@ -17,16 +18,6 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
   static const _maxCoverSearchDepth = 4;
   static const _maxCoverSearchDirectories = 64;
   static const _smallImageByteLimit = 512 * 1024;
-
-  /// 支持的图片扩展名
-  static const _supportedExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-  };
 
   /// 自定义输出目录（为 null 时使用系统缓存目录）
   final String? outputDirectory;
@@ -86,9 +77,7 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
 
       final entries = await source.listDirectory(path);
       for (final entry in entries.where((entry) => !entry.isDirectory)) {
-        if (_supportedExtensions.contains(
-          p.extension(entry.name).toLowerCase(),
-        )) {
+        if (MediaFileTypes.isImage(entry.name)) {
           return entry.path;
         }
       }
@@ -125,7 +114,7 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
     if (bytes.length > _smallImageByteLimit) return false;
     if (image.width > ThumbnailGenerator.thumbWidth) return false;
     if (image.height > ThumbnailGenerator.thumbHeight) return false;
-    return extension == '.jpg' || extension == '.jpeg' || extension == '.png';
+    return MediaFileTypes.canReuseOriginalPreviewBytes(extension);
   }
 
   /// 缩放并裁剪图片到目标尺寸（居中裁剪）

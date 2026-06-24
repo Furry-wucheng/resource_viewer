@@ -254,6 +254,7 @@ class _ResourceDetailSheetState extends State<ResourceDetailSheet> {
             spacing: 8,
             children: [
               _orgModeChip(theme, OrganizationMode.chapter, '章节'),
+              _orgModeChip(theme, OrganizationMode.chapterGallery, '章节画廊'),
               _orgModeChip(theme, OrganizationMode.flatgrid, '平铺网格'),
               _orgModeChip(theme, OrganizationMode.gallery, '画廊'),
             ],

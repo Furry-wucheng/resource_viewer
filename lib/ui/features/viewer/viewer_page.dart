@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../data/repositories/settings_repository.dart';
 import '../../../domain/core/result.dart';
 import '../../../domain/models/app_config.dart' as domain;
+import '../../../domain/models/chapter.dart';
 import '../../../shared/content_provider/content_provider.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import 'view_models/viewer_view_model.dart';
@@ -24,6 +25,9 @@ class ViewerPage extends StatefulWidget {
     this.resourceId,
     this.isFavorited = false,
     this.onFavoriteTap,
+    this.chapters,
+    this.currentChapterIndex,
+    this.onNavigateChapter,
   }) : items = null,
        onDispose = null;
 
@@ -36,6 +40,9 @@ class ViewerPage extends StatefulWidget {
     this.resourceId,
     this.isFavorited = false,
     this.onFavoriteTap,
+    this.chapters,
+    this.currentChapterIndex,
+    this.onNavigateChapter,
   }) : contentProvider = null;
 
   final String title;
@@ -43,6 +50,9 @@ class ViewerPage extends StatefulWidget {
   final ContentProvider? contentProvider;
   final List<ViewerMediaItem>? items;
   final Future<void> Function()? onDispose;
+  final List<Chapter>? chapters;
+  final int? currentChapterIndex;
+  final NavigateChapter? onNavigateChapter;
 
   /// 资源 ID（用于收藏功能）
   final String? resourceId;
@@ -92,12 +102,18 @@ class _ViewerPageState extends State<ViewerPage> {
             title: widget.title,
             contentProvider: widget.contentProvider!,
             initialPage: widget.initialPage,
+            chapters: widget.chapters,
+            currentChapterIndex: widget.currentChapterIndex,
+            onNavigateChapter: widget.onNavigateChapter,
           )
         : ViewerViewModel.media(
             title: widget.title,
             items: widget.items!,
             initialPage: widget.initialPage,
             onDispose: widget.onDispose,
+            chapters: widget.chapters,
+            currentChapterIndex: widget.currentChapterIndex,
+            onNavigateChapter: widget.onNavigateChapter,
           );
     _pageController = PageController(initialPage: widget.initialPage);
     _viewModel.init();
@@ -118,18 +134,17 @@ class _ViewerPageState extends State<ViewerPage> {
             ? PageDirection.rightToLeft
             : PageDirection.leftToRight,
       );
-      _viewModel.applyDoublePageMode(
-        _mapDoublePageMode(config.doublePageMode),
-      );
+      _viewModel.applyDoublePageMode(_mapDoublePageMode(config.doublePageMode));
       _crossChapter = config.crossChapter;
     }
   }
 
-  DoublePageMode _mapDoublePageMode(domain.DoublePageMode mode) => switch (mode) {
-    domain.DoublePageMode.auto => DoublePageMode.auto,
-    domain.DoublePageMode.single => DoublePageMode.single,
-    domain.DoublePageMode.double => DoublePageMode.double,
-  };
+  DoublePageMode _mapDoublePageMode(domain.DoublePageMode mode) =>
+      switch (mode) {
+        domain.DoublePageMode.auto => DoublePageMode.auto,
+        domain.DoublePageMode.single => DoublePageMode.single,
+        domain.DoublePageMode.double => DoublePageMode.double,
+      };
 
   @override
   void dispose() {
@@ -516,7 +531,7 @@ class _ViewerPageState extends State<ViewerPage> {
     // 触发导航
     final targetIndex = isPrev ? vm.prevChapterIndex : vm.nextChapterIndex;
     if (targetIndex != null && vm.onNavigateChapter != null) {
-      vm.onNavigateChapter!(targetIndex);
+      vm.onNavigateChapter!(targetIndex, isPrev);
     }
   }
 

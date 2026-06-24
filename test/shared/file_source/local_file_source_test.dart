@@ -11,10 +11,7 @@ void main() {
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('local_file_source_test_');
-    source = LocalFileSource(
-      sourceId: 'test-source',
-      rootPath: tempDir.path,
-    );
+    source = LocalFileSource(sourceId: 'test-source', rootPath: tempDir.path);
   });
 
   tearDown(() async {
@@ -123,12 +120,22 @@ void main() {
       });
 
       test('支持的图片格式', () async {
-        for (final ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']) {
+        for (final ext in [
+          '.jpg',
+          '.jpeg',
+          '.png',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.tiff',
+          '.tif',
+          '.avif',
+        ]) {
           await createTestFile('image$ext');
         }
 
         final result = await source.listDirectory('');
-        expect(result.length, 6);
+        expect(result.length, 9);
       });
 
       test('支持的视频格式', () async {

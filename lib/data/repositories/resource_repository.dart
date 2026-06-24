@@ -441,6 +441,8 @@ class ResourceRepository {
     return switch (mode) {
       drift.OrganizationMode.direct => domain.OrganizationMode.direct,
       drift.OrganizationMode.chapter => domain.OrganizationMode.chapter,
+      drift.OrganizationMode.chapterGallery =>
+        domain.OrganizationMode.chapterGallery,
       drift.OrganizationMode.flatgrid => domain.OrganizationMode.flatgrid,
       drift.OrganizationMode.gallery => domain.OrganizationMode.gallery,
     };
@@ -453,6 +455,8 @@ class ResourceRepository {
     return switch (mode) {
       domain.OrganizationMode.direct => drift.OrganizationMode.direct,
       domain.OrganizationMode.chapter => drift.OrganizationMode.chapter,
+      domain.OrganizationMode.chapterGallery =>
+        drift.OrganizationMode.chapterGallery,
       domain.OrganizationMode.flatgrid => drift.OrganizationMode.flatgrid,
       domain.OrganizationMode.gallery => drift.OrganizationMode.gallery,
     };

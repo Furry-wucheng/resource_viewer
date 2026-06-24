@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../../domain/models/file_entry.dart';
 import '../../../../shared/file_source/file_source.dart';
+import '../../../../shared/media/media_file_types.dart';
 
 /// ResourcePicker 模式
 enum ResourcePickerMode {
@@ -98,28 +98,6 @@ class _ResourcePickerDialogState extends State<ResourcePickerDialog> {
   final Set<String> _checkedPaths = {};
 
   int get _checkedCount => _checkedPaths.length;
-
-  /// 支持的兼容文件扩展名
-  static const _compatibleExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.pdf',
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-    '.zip',
-    '.rar',
-    '.7z',
-  };
 
   @override
   void initState() {
@@ -255,8 +233,7 @@ class _ResourcePickerDialogState extends State<ResourcePickerDialog> {
   }
 
   bool _isCompatibleFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _compatibleExtensions.contains(ext);
+    return MediaFileTypes.isViewable(name);
   }
 
   @override
@@ -489,10 +466,9 @@ class _ResourcePickerDialogState extends State<ResourcePickerDialog> {
 
   IconData _nodeIcon(PickerNode node) {
     if (!node.isDirectory) {
-      final ext = p.extension(node.name).toLowerCase();
-      if (ext == '.pdf') return Icons.picture_as_pdf;
-      if (ext == '.mp4' || ext == '.mkv') return Icons.movie;
-      if (ext == '.zip' || ext == '.rar' || ext == '.7z') return Icons.archive;
+      if (MediaFileTypes.isPdf(node.name)) return Icons.picture_as_pdf;
+      if (MediaFileTypes.isVideo(node.name)) return Icons.movie;
+      if (MediaFileTypes.isArchive(node.name)) return Icons.archive;
       return Icons.image;
     }
     return Icons.folder;
@@ -500,9 +476,9 @@ class _ResourcePickerDialogState extends State<ResourcePickerDialog> {
 
   Color _nodeColor(PickerNode node) {
     if (!node.isDirectory) {
-      final ext = p.extension(node.name).toLowerCase();
-      if (ext == '.pdf') return Colors.red;
-      if (ext == '.mp4' || ext == '.mkv') return Colors.blue;
+      if (MediaFileTypes.isPdf(node.name)) return Colors.red;
+      if (MediaFileTypes.isVideo(node.name)) return Colors.blue;
+      if (MediaFileTypes.isArchive(node.name)) return Colors.orange;
       return Colors.green;
     }
     return Colors.orange;

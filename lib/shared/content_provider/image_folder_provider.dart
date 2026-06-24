@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
+import '../media/media_file_types.dart';
 import '../file_source/file_source.dart';
 import 'content_provider.dart';
 
@@ -16,16 +17,6 @@ class ImageFolderProvider implements ContentProvider {
 
   List<String>? _imagePaths;
   bool _disposed = false;
-
-  /// 支持的图片扩展名（小写）
-  static const _supportedExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-  };
 
   @override
   int get pageCount {
@@ -89,8 +80,7 @@ class ImageFolderProvider implements ContentProvider {
 
   /// 检查文件名是否为支持的图片格式
   bool _isSupportedImage(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _supportedExtensions.contains(ext);
+    return MediaFileTypes.isImage(name);
   }
 
   /// 自然排序（2 排在 10 前面）

@@ -4,6 +4,7 @@ import '../../data/repositories/resource_repository.dart';
 import '../../domain/core/result.dart';
 import '../../domain/models/resource.dart';
 import '../../shared/file_source/file_source.dart';
+import '../../shared/media/media_file_types.dart';
 import 'detect_organization_mode_use_case.dart';
 
 /// 拆分资源结果
@@ -92,14 +93,9 @@ class SplitResourceUseCase {
   }
 
   ResourceType _detectResourceType(String name) {
-    final ext = name.toLowerCase();
-    if (ext.endsWith('.pdf')) return ResourceType.pdf;
-    if (ext.endsWith('.mp4') || ext.endsWith('.mkv') || ext.endsWith('.mov')) {
-      return ResourceType.video;
-    }
-    if (ext.endsWith('.zip') || ext.endsWith('.rar') || ext.endsWith('.7z')) {
-      return ResourceType.archive;
-    }
+    if (MediaFileTypes.isPdf(name)) return ResourceType.pdf;
+    if (MediaFileTypes.isVideo(name)) return ResourceType.video;
+    if (MediaFileTypes.isArchive(name)) return ResourceType.archive;
     return ResourceType.folder;
   }
 }

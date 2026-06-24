@@ -1,11 +1,10 @@
-import 'package:path/path.dart' as p;
-
 import '../../domain/models/chapter.dart';
 import '../../domain/models/file_entry.dart';
 import '../../domain/models/resource.dart';
 import '../content_provider/content_provider.dart';
 import '../content_provider/image_folder_provider.dart';
 import '../file_source/file_source.dart';
+import '../media/media_file_types.dart';
 import 'organization_strategy.dart';
 
 /// 平铺网格模式策略
@@ -13,28 +12,6 @@ import 'organization_strategy.dart';
 /// 当前层级网格展示，文件夹逐层进入，文件点击进入查看器。
 /// 当资源仅含单层文件（无子文件夹）时，平铺网格自然退化为全文件缩略图网格。
 class FlatGridStrategy implements OrganizationStrategy {
-  /// 兼容文件扩展名
-  static const _compatibleExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.pdf',
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-    '.zip',
-    '.rar',
-    '.7z',
-  };
-
   @override
   OrganizationMode get mode => OrganizationMode.flatgrid;
 
@@ -75,8 +52,7 @@ class FlatGridStrategy implements OrganizationStrategy {
   }
 
   bool _isCompatibleFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _compatibleExtensions.contains(ext);
+    return MediaFileTypes.isViewable(name);
   }
 
   static int _naturalCompare(String a, String b) {

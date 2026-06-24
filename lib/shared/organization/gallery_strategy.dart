@@ -6,6 +6,7 @@ import '../../domain/models/resource.dart';
 import '../content_provider/content_provider.dart';
 import '../content_provider/image_folder_provider.dart';
 import '../file_source/file_source.dart';
+import '../media/media_file_types.dart';
 import 'organization_strategy.dart';
 
 /// 画廊模式策略
@@ -13,28 +14,6 @@ import 'organization_strategy.dart';
 /// 递归展开所有子文件夹的全部兼容文件到一个大网格。
 /// 不保留文件夹层级信息——所有文件视为平面列表。
 class GalleryStrategy implements OrganizationStrategy {
-  /// 兼容文件扩展名
-  static const _compatibleExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.pdf',
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-    '.zip',
-    '.rar',
-    '.7z',
-  };
-
   @override
   OrganizationMode get mode => OrganizationMode.gallery;
 
@@ -95,7 +74,6 @@ class GalleryStrategy implements OrganizationStrategy {
   }
 
   bool _isCompatibleFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _compatibleExtensions.contains(ext);
+    return MediaFileTypes.isViewable(name);
   }
 }

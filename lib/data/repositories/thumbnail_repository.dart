@@ -12,6 +12,7 @@ import '../../domain/core/result.dart';
 import '../../domain/models/resource.dart';
 import '../../domain/models/file_entry.dart';
 import '../../shared/file_source/file_source.dart';
+import '../../shared/media/media_file_types.dart';
 import '../../shared/thumbnail/thumbnail_generator.dart';
 import '../../shared/thumbnail/image_thumbnail_generator.dart';
 import '../../shared/thumbnail/video_thumbnail_generator.dart';
@@ -38,27 +39,7 @@ class ThumbnailRepository {
     outputDirectory: _imageGenerator.outputDirectory,
   );
 
-  static const _imageExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.tiff',
-    '.tif',
-  };
   static const _smallImageByteLimit = 512 * 1024;
-  static const _videoExtensions = {
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-  };
 
   /// 文件浏览器预览。
   ///
@@ -76,10 +57,9 @@ class ThumbnailRepository {
       if (entry.isDirectory) {
         bytes = await _previewDirectory(source, entry.path);
       } else {
-        final extension = p.extension(entry.name).toLowerCase();
-        if (_imageExtensions.contains(extension)) {
+        if (MediaFileTypes.isImage(entry.name)) {
           bytes = await _previewImage(source, entry.path);
-        } else if (_videoExtensions.contains(extension)) {
+        } else if (MediaFileTypes.isVideo(entry.name)) {
           bytes = await _videoGenerator.generatePreview(source, entry.path);
         } else {
           bytes = null;
@@ -158,7 +138,7 @@ class ThumbnailRepository {
     if (bytes.length > _smallImageByteLimit) return false;
     if (image.width > ThumbnailGenerator.thumbWidth) return false;
     if (image.height > ThumbnailGenerator.thumbHeight) return false;
-    return extension == '.jpg' || extension == '.jpeg' || extension == '.png';
+    return MediaFileTypes.canReuseOriginalPreviewBytes(extension);
   }
 
   Future<Uint8List?> _previewDirectory(
@@ -169,11 +149,10 @@ class ThumbnailRepository {
 
     final rootEntries = await source.listDirectory(rootPath);
     for (final entry in rootEntries.where((entry) => !entry.isDirectory)) {
-      final extension = p.extension(entry.name).toLowerCase();
-      if (_imageExtensions.contains(extension)) {
+      if (MediaFileTypes.isImage(entry.name)) {
         return _previewImage(source, entry.path);
       }
-      if (firstVideoPath == null && _videoExtensions.contains(extension)) {
+      if (firstVideoPath == null && MediaFileTypes.isVideo(entry.name)) {
         firstVideoPath = entry.path;
       }
     }

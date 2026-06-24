@@ -7,7 +7,7 @@ enum SourceType { local, smb, ftp, webdav }
 enum ResourceType { folder, pdf, archive, video }
 
 /// 资源的组织与浏览方式。
-enum OrganizationMode { direct, chapter, flatgrid, gallery }
+enum OrganizationMode { direct, chapter, chapterGallery, flatgrid, gallery }
 
 enum AppThemeMode { system, light, dark }
 

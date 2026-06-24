@@ -1,6 +1,5 @@
-import 'package:path/path.dart' as p;
-
 import '../../shared/file_source/file_source.dart';
+import '../../shared/media/media_file_types.dart';
 import '../models/file_entry.dart';
 import '../models/resource.dart';
 
@@ -12,38 +11,6 @@ import '../models/resource.dart';
 /// 3. 画廊模式不自动判定，仅用户手动选择
 class DetectOrganizationModeUseCase {
   const DetectOrganizationModeUseCase();
-
-  /// 支持的图片扩展名
-  static const _imageExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-  };
-
-  /// 支持的兼容文件扩展名
-  static const _compatibleExtensions = {
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.webp',
-    '.bmp',
-    '.pdf',
-    '.zip',
-    '.rar',
-    '.7z',
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-  };
 
   /// 检测指定路径的组织模式
   ///
@@ -103,13 +70,11 @@ class DetectOrganizationModeUseCase {
 
   /// 检查文件名是否为支持的图片格式
   bool _isImageFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _imageExtensions.contains(ext);
+    return MediaFileTypes.isImage(name);
   }
 
   /// 检查文件名是否为兼容文件格式
   bool _isCompatibleFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _compatibleExtensions.contains(ext);
+    return MediaFileTypes.isViewable(name);
   }
 }

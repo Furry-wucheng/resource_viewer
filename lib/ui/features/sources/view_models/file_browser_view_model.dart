@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -16,6 +15,7 @@ import '../../../../domain/models/resource.dart';
 import '../../../../domain/models/tag.dart';
 import '../../../../shared/file_source/file_source_factory.dart';
 import '../../../../shared/file_source/smb_file_source.dart';
+import '../../../../shared/media/media_file_types.dart';
 import '../../../core/view_models/base_view_model.dart';
 
 /// 文件浏览器视图模式
@@ -590,47 +590,15 @@ class FileBrowserViewModel extends BaseViewModel {
           : null;
     }
 
-    return switch (p.extension(entry.name).toLowerCase()) {
-      '.pdf' => ResourceType.pdf,
-      '.zip' || '.rar' || '.7z' || '.tar' || '.gz' => ResourceType.archive,
-      '.mp4' ||
-      '.mkv' ||
-      '.avi' ||
-      '.mov' ||
-      '.wmv' ||
-      '.flv' ||
-      '.webm' ||
-      '.m4v' => ResourceType.video,
-      _ => null,
-    };
+    if (MediaFileTypes.isPdf(entry.name)) return ResourceType.pdf;
+    if (MediaFileTypes.isArchive(entry.name)) return ResourceType.archive;
+    if (MediaFileTypes.isVideo(entry.name)) return ResourceType.video;
+    return null;
   }
 
   bool _isSupportedContent(FileEntry entry) {
     if (entry.isDirectory) return false;
-    return const {
-      '.jpg',
-      '.jpeg',
-      '.png',
-      '.gif',
-      '.webp',
-      '.bmp',
-      '.tiff',
-      '.tif',
-      '.pdf',
-      '.zip',
-      '.rar',
-      '.7z',
-      '.tar',
-      '.gz',
-      '.mp4',
-      '.mkv',
-      '.avi',
-      '.mov',
-      '.wmv',
-      '.flv',
-      '.webm',
-      '.m4v',
-    }.contains(p.extension(entry.name).toLowerCase());
+    return MediaFileTypes.isSupported(entry.name);
   }
 
   /// 文件夹只在整个子树都没有兼容内容时才视为空。

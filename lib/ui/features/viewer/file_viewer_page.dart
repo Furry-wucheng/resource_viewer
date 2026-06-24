@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import '../../../domain/models/file_entry.dart';
 import '../../../shared/file_source/file_source_factory.dart';
+import '../../../shared/media/media_file_types.dart';
 import '../../../data/repositories/source_repository.dart';
 import '../../../data/repositories/filesystem_repository.dart';
 import '../../../domain/core/result.dart';
@@ -115,24 +116,8 @@ class _FileViewerPageState extends State<FileViewerPage> {
 
   bool _isViewableMedia(FileEntry entry) {
     if (entry.isDirectory) return false;
-    return const {
-      '.jpg',
-      '.jpeg',
-      '.png',
-      '.gif',
-      '.webp',
-      '.bmp',
-      '.tiff',
-      '.tif',
-      '.mp4',
-      '.mkv',
-      '.avi',
-      '.mov',
-      '.wmv',
-      '.flv',
-      '.webm',
-      '.m4v',
-    }.contains(p.extension(entry.name).toLowerCase());
+    return MediaFileTypes.isImage(entry.name) ||
+        MediaFileTypes.isVideo(entry.name);
   }
 
   @override

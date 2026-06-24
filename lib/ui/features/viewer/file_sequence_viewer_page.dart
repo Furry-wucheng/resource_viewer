@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../../../domain/models/file_entry.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import '../../../shared/file_source/file_source.dart';
+import '../../../shared/media/media_file_types.dart';
 import 'viewer_page.dart';
 
 /// 文件浏览器上下文适配器；实际 UI 与资源库共用 [ViewerPage]。
@@ -42,14 +43,5 @@ class FileSequenceViewerPage extends StatelessWidget {
     );
   }
 
-  bool _isVideo(FileEntry entry) => const {
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.mov',
-    '.wmv',
-    '.flv',
-    '.webm',
-    '.m4v',
-  }.contains(p.extension(entry.name).toLowerCase());
+  bool _isVideo(FileEntry entry) => MediaFileTypes.isVideo(entry.name);
 }

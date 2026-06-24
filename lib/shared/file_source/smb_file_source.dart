@@ -4,6 +4,7 @@ import 'package:dart_smb2/dart_smb2.dart';
 import 'package:path/path.dart' as p;
 
 import '../../domain/models/file_entry.dart';
+import '../media/media_file_types.dart';
 import 'file_source.dart';
 
 /// SMB 文件系统 FileSource 实现
@@ -49,18 +50,6 @@ class SmbFileSource implements FileSource {
 
   /// SMB 连接池
   SmbPoolClient? _pool;
-
-  /// 支持的文件扩展名（小写）
-  static const _supportedExtensions = {
-    // 图片
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif',
-    // PDF
-    '.pdf',
-    // 视频
-    '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v',
-    // 压缩包
-    '.zip', '.rar', '.7z', '.tar', '.gz',
-  };
 
   /// 确保连接池已创建
   Future<SmbPoolClient> _ensurePool() async {
@@ -194,8 +183,7 @@ class SmbFileSource implements FileSource {
 
   /// 检查文件是否在支持列表中
   bool _isSupported(String name) {
-    final ext = p.extension(name).toLowerCase();
-    return _supportedExtensions.contains(ext);
+    return MediaFileTypes.isSupported(name);
   }
 
   /// 自然排序（2 排在 10 前面）

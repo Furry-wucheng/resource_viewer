@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../../data/repositories/resource_repository.dart';
@@ -12,6 +14,8 @@ import '../../../domain/models/file_entry.dart';
 import '../../../domain/models/resource.dart';
 import '../../../shared/file_source/file_source.dart';
 import '../../../shared/content_provider/image_folder_provider.dart';
+import '../../../shared/content_provider/viewer_media_item.dart';
+import '../../../shared/media/media_file_types.dart';
 import '../../../shared/organization/chapter_strategy.dart';
 import '../../core/view_models/base_view_model.dart' show UiState;
 import '../../core/theme/app_colors.dart';
@@ -492,6 +496,24 @@ class _ChapterListPageState extends State<ChapterListPage> {
   }
 
   Future<void> _openChapter(Chapter chapter) async {
+    final chapterIndex = _chapterIndexOf(chapter);
+    if (chapterIndex == null) return;
+
+    if (widget.resource.organizationMode == OrganizationMode.chapterGallery) {
+      await _openChapterGallery(chapterIndex);
+      return;
+    }
+
+    final viewer = await _buildImageChapterViewer(chapterIndex);
+    if (viewer == null || !mounted) return;
+    _pushViewer(viewer);
+  }
+
+  Future<Widget?> _buildImageChapterViewer(
+    int chapterIndex, {
+    bool openAtEnd = false,
+  }) async {
+    final chapter = _viewModel.chapters[chapterIndex];
     final strategy = ChapterStrategy();
     final provider =
         strategy.createProvider(
@@ -504,25 +526,127 @@ class _ChapterListPageState extends State<ChapterListPage> {
 
     if (!mounted) {
       await provider.dispose();
-      return;
+      return null;
     }
 
     if (provider.pageCount == 0) {
       await provider.dispose();
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('"${chapter.name}" 中没有支持的图片')));
-      return;
+      return null;
     }
 
-    final viewer = ViewerPage(title: chapter.name, contentProvider: provider);
+    final initialPage = openAtEnd ? provider.pageCount - 1 : 0;
+    return ViewerPage(
+      title: chapter.name,
+      contentProvider: provider,
+      initialPage: initialPage,
+      chapters: _viewModel.chapters,
+      currentChapterIndex: chapterIndex,
+      onNavigateChapter: _replaceWithChapter,
+    );
+  }
 
+  Future<void> _openChapterGallery(
+    int chapterIndex, {
+    bool openAtEnd = false,
+  }) async {
+    final viewer = await _buildChapterGalleryViewer(
+      chapterIndex,
+      openAtEnd: openAtEnd,
+    );
+    if (viewer == null || !mounted) return;
+    _pushViewer(viewer);
+  }
+
+  Future<Widget?> _buildChapterGalleryViewer(
+    int chapterIndex, {
+    bool openAtEnd = false,
+  }) async {
+    final chapter = _viewModel.chapters[chapterIndex];
+    final result = await context
+        .read<OrganizationRepository>()
+        .getChapterGalleryContents(widget.fileSource, chapter);
+
+    if (!mounted) return null;
+
+    switch (result) {
+      case Ok(:final value):
+        if (value.isEmpty) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('"${chapter.name}" 中没有支持的文件')));
+          return null;
+        }
+        final initialPage = openAtEnd ? value.length - 1 : 0;
+        return ViewerPage.media(
+          title: chapter.name,
+          items: _toViewerItems(value),
+          initialPage: initialPage,
+          chapters: _viewModel.chapters,
+          currentChapterIndex: chapterIndex,
+          onNavigateChapter: _replaceWithChapter,
+        );
+      case Err(:final error):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+        return null;
+    }
+  }
+
+  void _pushViewer(Widget viewer) {
     if (widget.onNavigateToViewer != null) {
       widget.onNavigateToViewer!(viewer);
     } else {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => viewer));
     }
+  }
+
+  void _replaceWithChapter(int chapterIndex, bool openAtEnd) {
+    unawaited(_replaceWithChapterAsync(chapterIndex, openAtEnd));
+  }
+
+  Future<void> _replaceWithChapterAsync(
+    int chapterIndex,
+    bool openAtEnd,
+  ) async {
+    final viewer =
+        widget.resource.organizationMode == OrganizationMode.chapterGallery
+        ? await _buildChapterGalleryViewer(chapterIndex, openAtEnd: openAtEnd)
+        : await _buildImageChapterViewer(chapterIndex, openAtEnd: openAtEnd);
+    if (viewer == null || !mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => viewer));
+  }
+
+  List<ViewerMediaItem> _toViewerItems(List<FileEntry> entries) {
+    return entries.map((entry) {
+      if (_isVideo(entry)) {
+        return ViewerMediaItem.video(
+          title: entry.name,
+          videoPath: p.join('', entry.path),
+        );
+      }
+      return ViewerMediaItem.image(
+        title: entry.name,
+        loadImage: () => widget.fileSource.readFile(entry.path),
+      );
+    }).toList();
+  }
+
+  int? _chapterIndexOf(Chapter chapter) {
+    final index = _viewModel.chapters.indexWhere(
+      (entry) => entry.path == chapter.path,
+    );
+    return index < 0 ? null : index;
+  }
+
+  bool _isVideo(FileEntry entry) {
+    return MediaFileTypes.isVideo(entry.name);
   }
 
   void _openLooseFile(FileEntry file) {
@@ -597,22 +721,16 @@ class _ChapterListPageState extends State<ChapterListPage> {
   }
 
   IconData _fileIcon(String name) {
-    final ext = name.toLowerCase();
-    if (ext.endsWith('.pdf')) return Icons.picture_as_pdf;
-    if (ext.endsWith('.mp4') || ext.endsWith('.mkv')) return Icons.movie;
-    if (ext.endsWith('.zip') || ext.endsWith('.rar') || ext.endsWith('.7z')) {
-      return Icons.archive;
-    }
+    if (MediaFileTypes.isPdf(name)) return Icons.picture_as_pdf;
+    if (MediaFileTypes.isVideo(name)) return Icons.movie;
+    if (MediaFileTypes.isArchive(name)) return Icons.archive;
     return Icons.image;
   }
 
   Color _fileColor(String name) {
-    final ext = name.toLowerCase();
-    if (ext.endsWith('.pdf')) return Colors.red;
-    if (ext.endsWith('.mp4') || ext.endsWith('.mkv')) return Colors.blue;
-    if (ext.endsWith('.zip') || ext.endsWith('.rar') || ext.endsWith('.7z')) {
-      return Colors.orange;
-    }
+    if (MediaFileTypes.isPdf(name)) return Colors.red;
+    if (MediaFileTypes.isVideo(name)) return Colors.blue;
+    if (MediaFileTypes.isArchive(name)) return Colors.orange;
     return Colors.green;
   }
 
