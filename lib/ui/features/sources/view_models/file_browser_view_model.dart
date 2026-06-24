@@ -604,6 +604,102 @@ class FileBrowserViewModel extends BaseViewModel {
     );
   }
 
+  /// 将 ResourcePicker 或单项菜单返回的路径加入资源库。
+  Future<Result<BatchAddResult>> addResourcePaths({
+    required List<String> paths,
+    List<String> tagIds = const [],
+    OrganizationMode? organizationMode,
+  }) async {
+    final fileSource = fileSourceFactory.get(sourceId);
+    if (fileSource == null) {
+      return const Err(SourceUnreachableError('数据源连接尚未初始化'));
+    }
+
+    final uniquePaths = paths.toSet().toList();
+    if (uniquePaths.isEmpty) {
+      return const Ok(
+        BatchAddResult(added: 0, skipped: 0, addedResourceIds: []),
+      );
+    }
+
+    final existingResult = await resourceRepository
+        .getResourcesBySourceIdAndPaths(sourceId, uniquePaths);
+    final existingPaths = switch (existingResult) {
+      Ok(:final value) =>
+        value.map((resource) => resource.relativePath).toSet(),
+      Err() => <String>{},
+    };
+    if (existingResult case Err(:final error)) {
+      return Err(error);
+    }
+
+    var added = 0;
+    var skipped = 0;
+    final addedResourceIds = <String>[];
+
+    for (final path in uniquePaths) {
+      if (existingPaths.contains(path)) {
+        skipped++;
+        continue;
+      }
+
+      final type = _resourceTypeForPath(path);
+      if (type == null) {
+        skipped++;
+        continue;
+      }
+
+      final id = _uuid.v4();
+      final createResult = await resourceRepository.createResourceWithTags(
+        id: id,
+        sourceId: sourceId,
+        name: _nameFromPath(path),
+        type: type,
+        relativePath: path,
+        organizationMode: organizationMode,
+        fileSize: null,
+        tagIds: tagIds,
+      );
+      switch (createResult) {
+        case Err(:final error):
+          return Err(error);
+        case Ok():
+          final thumbResult = await thumbnailRepository.generate(
+            id,
+            fileSource,
+            path,
+            type,
+          );
+          if (thumbResult case Err(:final error)) return Err(error);
+          _importedPaths.add(path);
+          _pathToResourceId[path] = id;
+          addedResourceIds.add(id);
+          added++;
+      }
+    }
+
+    await _loadImportedPaths();
+    notifyListeners();
+    return Ok(
+      BatchAddResult(
+        added: added,
+        skipped: skipped,
+        addedResourceIds: addedResourceIds,
+      ),
+    );
+  }
+
+  Future<Result<Resource?>> getResourceForPath(String path) async {
+    final result = await resourceRepository.getResourcesBySourceIdAndPaths(
+      sourceId,
+      [path],
+    );
+    return switch (result) {
+      Ok(:final value) => Ok(value.isEmpty ? null : value.first),
+      Err(:final error) => Err(error),
+    };
+  }
+
   Future<ResourceType?> _resourceTypeFor(FileEntry entry) async {
     if (entry.isDirectory) {
       return await _directoryContainsSupportedContent(entry.path)
@@ -615,6 +711,19 @@ class FileBrowserViewModel extends BaseViewModel {
     if (MediaFileTypes.isArchive(entry.name)) return ResourceType.archive;
     if (MediaFileTypes.isVideo(entry.name)) return ResourceType.video;
     return null;
+  }
+
+  ResourceType? _resourceTypeForPath(String path) {
+    if (MediaFileTypes.isPdf(path)) return ResourceType.pdf;
+    if (MediaFileTypes.isArchive(path)) return ResourceType.archive;
+    if (MediaFileTypes.isVideo(path)) return ResourceType.video;
+    if (MediaFileTypes.isImage(path)) return null;
+    return path.split('/').last.contains('.') ? null : ResourceType.folder;
+  }
+
+  String _nameFromPath(String path) {
+    if (path.isEmpty) return sourceName;
+    return path.split('/').last;
   }
 
   bool _isSupportedContent(FileEntry entry) {

@@ -255,6 +255,209 @@ void main() {
     verifyNever(() => thumbnails.preview(fileSource, secondEntry));
   });
 
+  group('addResourcePaths', () {
+    test('将 ResourcePicker 返回的深层路径添加为资源', () async {
+      final filesystem = _MockFilesystemRepository();
+      final resources = _MockResourceRepository();
+      final tags = _MockTagRepository();
+      final thumbnails = _MockThumbnailRepository();
+      final sourceFactory = _MockFileSourceFactory();
+      final fileSource = _MockFileSource();
+
+      when(() => sourceFactory.get('source')).thenReturn(fileSource);
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', [
+          'series/chapter-1',
+          'series/bonus.pdf',
+        ]),
+      ).thenAnswer((_) async => const Ok([]));
+      when(
+        () => resources.createResourceWithTags(
+          id: any(named: 'id'),
+          sourceId: 'source',
+          name: 'chapter-1',
+          type: ResourceType.folder,
+          relativePath: 'series/chapter-1',
+          tagIds: ['tag1'],
+          organizationMode: OrganizationMode.flatgrid,
+          fileSize: null,
+        ),
+      ).thenAnswer(
+        (invocation) async => Ok(
+          Resource(
+            id: invocation.namedArguments[#id] as String,
+            sourceId: 'source',
+            name: 'chapter-1',
+            type: ResourceType.folder,
+            relativePath: 'series/chapter-1',
+            organizationMode: OrganizationMode.flatgrid,
+            createdAt: DateTime(2026),
+            updatedAt: DateTime(2026),
+          ),
+        ),
+      );
+      when(
+        () => resources.createResourceWithTags(
+          id: any(named: 'id'),
+          sourceId: 'source',
+          name: 'bonus.pdf',
+          type: ResourceType.pdf,
+          relativePath: 'series/bonus.pdf',
+          tagIds: ['tag1'],
+          organizationMode: OrganizationMode.flatgrid,
+          fileSize: null,
+        ),
+      ).thenAnswer(
+        (invocation) async => Ok(
+          Resource(
+            id: invocation.namedArguments[#id] as String,
+            sourceId: 'source',
+            name: 'bonus.pdf',
+            type: ResourceType.pdf,
+            relativePath: 'series/bonus.pdf',
+            organizationMode: OrganizationMode.flatgrid,
+            createdAt: DateTime(2026),
+            updatedAt: DateTime(2026),
+          ),
+        ),
+      );
+      when(
+        () => thumbnails.generate(
+          any(),
+          fileSource,
+          'series/chapter-1',
+          ResourceType.folder,
+        ),
+      ).thenAnswer((_) async => const Ok(null));
+      when(
+        () => thumbnails.generate(
+          any(),
+          fileSource,
+          'series/bonus.pdf',
+          ResourceType.pdf,
+        ),
+      ).thenAnswer((_) async => const Ok(null));
+
+      final viewModel = FileBrowserViewModel(
+        sourceId: 'source',
+        sourceName: '测试源',
+        filesystemRepository: filesystem,
+        resourceRepository: resources,
+        tagRepository: tags,
+        thumbnailRepository: thumbnails,
+        fileSourceFactory: sourceFactory,
+      );
+
+      final result = await viewModel.addResourcePaths(
+        paths: ['series/chapter-1', 'series/bonus.pdf'],
+        tagIds: ['tag1'],
+        organizationMode: OrganizationMode.flatgrid,
+      );
+
+      expect(result, isA<Ok<BatchAddResult>>());
+      final value = (result as Ok<BatchAddResult>).value;
+      expect(value.added, 2);
+      expect(value.skipped, 0);
+      expect(value.addedResourceIds, hasLength(2));
+      verify(
+        () => thumbnails.generate(
+          any(),
+          fileSource,
+          'series/chapter-1',
+          ResourceType.folder,
+        ),
+      ).called(1);
+      verify(
+        () => thumbnails.generate(
+          any(),
+          fileSource,
+          'series/bonus.pdf',
+          ResourceType.pdf,
+        ),
+      ).called(1);
+    });
+
+    test('跳过已入库路径', () async {
+      final filesystem = _MockFilesystemRepository();
+      final resources = _MockResourceRepository();
+      final tags = _MockTagRepository();
+      final thumbnails = _MockThumbnailRepository();
+      final sourceFactory = _MockFileSourceFactory();
+      final fileSource = _MockFileSource();
+      final existing = Resource(
+        id: 'res1',
+        sourceId: 'source',
+        name: 'chapter-1',
+        type: ResourceType.folder,
+        relativePath: 'series/chapter-1',
+        organizationMode: null,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      );
+
+      when(() => sourceFactory.get('source')).thenReturn(fileSource);
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', [
+          'series/chapter-1',
+        ]),
+      ).thenAnswer((_) async => Ok([existing]));
+
+      final viewModel = FileBrowserViewModel(
+        sourceId: 'source',
+        sourceName: '测试源',
+        filesystemRepository: filesystem,
+        resourceRepository: resources,
+        tagRepository: tags,
+        thumbnailRepository: thumbnails,
+        fileSourceFactory: sourceFactory,
+      );
+
+      final result = await viewModel.addResourcePaths(
+        paths: ['series/chapter-1'],
+      );
+
+      expect(result, isA<Ok<BatchAddResult>>());
+      final value = (result as Ok<BatchAddResult>).value;
+      expect(value.added, 0);
+      expect(value.skipped, 1);
+    });
+
+    test('跳过单张图片文件路径', () async {
+      final filesystem = _MockFilesystemRepository();
+      final resources = _MockResourceRepository();
+      final tags = _MockTagRepository();
+      final thumbnails = _MockThumbnailRepository();
+      final sourceFactory = _MockFileSourceFactory();
+      final fileSource = _MockFileSource();
+
+      when(() => sourceFactory.get('source')).thenReturn(fileSource);
+      when(
+        () => resources.getResourcesBySourceIdAndPaths('source', [
+          'series/cover.jpg',
+        ]),
+      ).thenAnswer((_) async => const Ok([]));
+
+      final viewModel = FileBrowserViewModel(
+        sourceId: 'source',
+        sourceName: '测试源',
+        filesystemRepository: filesystem,
+        resourceRepository: resources,
+        tagRepository: tags,
+        thumbnailRepository: thumbnails,
+        fileSourceFactory: sourceFactory,
+      );
+
+      final result = await viewModel.addResourcePaths(
+        paths: ['series/cover.jpg'],
+      );
+
+      expect(result, isA<Ok<BatchAddResult>>());
+      final value = (result as Ok<BatchAddResult>).value;
+      expect(value.added, 0);
+      expect(value.skipped, 1);
+    });
+  });
+
   group('batchTagSelectedResources', () {
     test('批量为已入库资源打标签', () async {
       final filesystem = _MockFilesystemRepository();

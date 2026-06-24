@@ -10,6 +10,8 @@ import '../../../data/repositories/thumbnail_repository.dart';
 import '../../../domain/core/result.dart';
 import '../../../domain/models/file_entry.dart';
 import '../../../shared/file_source/file_source_factory.dart';
+import '../../../domain/use_cases/split_resource_use_case.dart';
+import '../../../shared/media/media_file_types.dart';
 import '../../core/view_models/base_view_model.dart';
 import '../tags/widgets/tag_multi_select_sheet.dart';
 import 'widgets/batch_add_resources_dialog.dart';
@@ -18,6 +20,7 @@ import 'view_models/file_browser_view_model.dart';
 import 'widgets/directory_tree.dart';
 import 'widgets/file_grid_view.dart';
 import 'widgets/file_list_view.dart';
+import 'widgets/resource_picker_dialog.dart';
 
 /// 文件浏览器页面
 ///
@@ -117,6 +120,11 @@ class _FileBrowserView extends StatelessWidget {
               tooltip: '全选',
             ),
           ] else ...[
+            IconButton(
+              icon: const Icon(Icons.drive_folder_upload),
+              onPressed: () => _scanDirectory(context, vm, null),
+              tooltip: '扫描入库',
+            ),
             IconButton(
               icon: const Icon(Icons.checklist),
               onPressed: vm.enterMultiSelectMode,
@@ -298,8 +306,7 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
-                onLongPressImported: (entry) =>
-                    _editResourceTags(context, vm, entry),
+                onLongPressEntry: (entry) => _showEntryMenu(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
                 hasMore: vm.visibleCount < vm.entries.length,
                 onLoadMore: vm.loadMoreEntries,
@@ -313,8 +320,7 @@ class _FileBrowserView extends StatelessWidget {
                     : null,
                 importedPaths: vm.importedPaths,
                 resourceTags: vm.resourceTags,
-                onLongPressImported: (entry) =>
-                    _editResourceTags(context, vm, entry),
+                onLongPressEntry: (entry) => _showEntryMenu(context, vm, entry),
                 thumbnailLoader: vm.thumbnailFor,
                 hasMore: vm.visibleCount < vm.entries.length,
                 onLoadMore: vm.loadMoreEntries,
@@ -529,6 +535,229 @@ class _FileBrowserView extends StatelessWidget {
     // 成功后退出多选模式
     if (result is Ok) {
       vm.exitMultiSelectMode();
+    }
+  }
+
+  Future<void> _showEntryMenu(
+    BuildContext context,
+    FileBrowserViewModel vm,
+    FileEntry entry,
+  ) async {
+    final isImported = vm.isImported(entry.path);
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isImported) ...[
+              ListTile(
+                leading: const Icon(Icons.label_outline),
+                title: const Text('编辑标签'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _editResourceTags(context, vm, entry);
+                },
+              ),
+              if (entry.isDirectory)
+                ListTile(
+                  leading: const Icon(Icons.call_split),
+                  title: const Text('拆分资源'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _splitImportedEntry(context, vm, entry);
+                  },
+                ),
+            ] else ...[
+              if (entry.isDirectory)
+                ListTile(
+                  leading: const Icon(Icons.account_tree_outlined),
+                  title: const Text('扫描入库'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _scanDirectory(context, vm, entry);
+                  },
+                ),
+              if (!entry.isDirectory && _isAddableFile(entry.name))
+                ListTile(
+                  leading: const Icon(Icons.add),
+                  title: const Text('添加为资源'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _addPathsAsResources(context, vm, [entry.path]);
+                  },
+                ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text('取消'),
+              onTap: () => Navigator.of(sheetContext).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isAddableFile(String name) {
+    return MediaFileTypes.isPdf(name) ||
+        MediaFileTypes.isArchive(name) ||
+        MediaFileTypes.isVideo(name);
+  }
+
+  Future<void> _scanDirectory(
+    BuildContext context,
+    FileBrowserViewModel vm,
+    FileEntry? entry,
+  ) async {
+    final fileSource = context.read<FileSourceFactory>().get(vm.sourceId);
+    if (fileSource == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('数据源连接尚未初始化')));
+      return;
+    }
+
+    final rootPath = entry?.path ?? vm.currentPath;
+    final title = entry == null
+        ? (vm.currentPath.isEmpty
+              ? '扫描入库：${vm.sourceName}'
+              : '扫描入库：${vm.breadcrumbs.last.label}')
+        : '扫描入库：${entry.name}';
+    final pickerResult = await ResourcePickerDialog.show(
+      context: context,
+      title: title,
+      fileSource: fileSource,
+      rootPath: rootPath,
+      mode: ResourcePickerMode.batchAdd,
+    );
+    if (pickerResult == null ||
+        pickerResult.paths.isEmpty ||
+        !context.mounted) {
+      return;
+    }
+
+    await _addPathsAsResources(context, vm, pickerResult.paths);
+  }
+
+  Future<void> _addPathsAsResources(
+    BuildContext context,
+    FileBrowserViewModel vm,
+    List<String> paths,
+  ) async {
+    final dialogResult = await BatchAddResourcesDialog.show(
+      context: context,
+      itemCount: paths.length,
+    );
+    if (dialogResult == null || !context.mounted) return;
+
+    final addResult = await vm.addResourcePaths(
+      paths: paths,
+      tagIds: dialogResult.tagIds.toList(),
+      organizationMode: dialogResult.organizationMode,
+    );
+    if (!context.mounted) return;
+
+    final message = switch (addResult) {
+      Ok(:final value) => '已添加 ${value.added} 项，跳过 ${value.skipped} 项',
+      Err(:final error) => '添加失败：${error.message}',
+    };
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _splitImportedEntry(
+    BuildContext context,
+    FileBrowserViewModel vm,
+    FileEntry entry,
+  ) async {
+    final resourceResult = await vm.getResourceForPath(entry.path);
+    if (!context.mounted) return;
+    final resource = switch (resourceResult) {
+      Ok(:final value) => value,
+      Err() => null,
+    };
+    if (resourceResult case Err(:final error)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+    if (resource == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('资源尚未入库')));
+      return;
+    }
+
+    final fileSource = context.read<FileSourceFactory>().get(vm.sourceId);
+    if (fileSource == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('数据源连接尚未初始化')));
+      return;
+    }
+
+    final pickerResult = await ResourcePickerDialog.show(
+      context: context,
+      title: '拆分资源：${entry.name}',
+      fileSource: fileSource,
+      rootPath: entry.path,
+      mode: ResourcePickerMode.splitKeep,
+    );
+    if (pickerResult == null ||
+        pickerResult.paths.isEmpty ||
+        !context.mounted) {
+      return;
+    }
+
+    if (pickerResult.deleteOriginal) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('确认拆分并删除'),
+          content: Text(
+            '原资源“${resource.name}”将被删除，拆出 ${pickerResult.paths.length} 个子资源。确定？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('确认删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
+
+    final splitUseCase = SplitResourceUseCase(
+      context.read<ResourceRepository>(),
+    );
+    final result = await splitUseCase(
+      originalResource: resource,
+      selectedPaths: pickerResult.paths,
+      deleteOriginal: pickerResult.deleteOriginal,
+      fileSource: fileSource,
+    );
+    if (!context.mounted) return;
+
+    switch (result) {
+      case Ok(:final value):
+        await vm.refreshCurrentDirectory();
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已创建 ${value.createdIds.length} 个子资源')),
+        );
+      case Err(:final error):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 

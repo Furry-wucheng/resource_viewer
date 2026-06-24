@@ -8,7 +8,7 @@ import '../../../../shared/media/media_file_types.dart';
 /// 文件网格视图组件
 ///
 /// 以网格形式显示文件和文件夹。
-/// 已入库项目显示入库角标，长按可编辑标签。
+/// 已入库项目显示入库角标，长按可打开条目操作菜单。
 class FileGridView extends StatefulWidget {
   const FileGridView({
     super.key,
@@ -18,7 +18,7 @@ class FileGridView extends StatefulWidget {
     this.onToggleSelect,
     this.importedPaths,
     this.resourceTags,
-    this.onLongPressImported,
+    this.onLongPressEntry,
     this.thumbnailLoader,
     this.hasMore = false,
     this.onLoadMore,
@@ -35,8 +35,8 @@ class FileGridView extends StatefulWidget {
   /// 路径 → 标签列表
   final Map<String, List<Tag>>? resourceTags;
 
-  /// 长按已入库项目的回调
-  final ValueChanged<FileEntry>? onLongPressImported;
+  /// 长按/右键条目的回调
+  final ValueChanged<FileEntry>? onLongPressEntry;
   final Future<Uint8List?> Function(FileEntry)? thumbnailLoader;
 
   /// 是否还有更多条目可展示
@@ -134,8 +134,8 @@ class _FileGridViewState extends State<FileGridView> {
           isImported: isImported,
           tags: tags,
           onTap: widget.onTap != null ? () => widget.onTap?.call(entry) : null,
-          onLongPress: isImported && widget.onLongPressImported != null
-              ? () => widget.onLongPressImported?.call(entry)
+          onLongPress: widget.onLongPressEntry != null
+              ? () => widget.onLongPressEntry?.call(entry)
               : widget.onToggleSelect != null
               ? () => widget.onToggleSelect?.call(entry)
               : null,
@@ -177,7 +177,7 @@ class _FileGridItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
-      onSecondaryTap: isImported ? onLongPress : null,
+      onSecondaryTap: onLongPress,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: Stack(
