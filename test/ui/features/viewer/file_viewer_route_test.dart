@@ -70,7 +70,9 @@ void main() {
     when(
       () => sourceRepository.getSourceById('source'),
     ).thenAnswer((_) async => Ok(source));
-    when(() => fileSourceFactory.create(source)).thenReturn(fileSource);
+    when(
+      () => fileSourceFactory.createAsync(source),
+    ).thenAnswer((_) async => fileSource);
     when(
       () => filesystemRepository.listDirectory('source', 'album'),
     ).thenAnswer(
@@ -86,16 +88,18 @@ void main() {
       ),
     );
     when(() => settingsRepo.getConfig()).thenAnswer(
-      (_) async => Ok(AppConfig(
-        id: 1,
-        themeMode: AppThemeMode.system,
-        pageDirection: PageDirection.rightToLeft,
-        doublePageMode: DoublePageMode.auto,
-        crossChapter: true,
-        cacheLimitMB: 500,
-        autoSyncInterval: AutoSyncInterval.off,
-        updatedAt: now,
-      )),
+      (_) async => Ok(
+        AppConfig(
+          id: 1,
+          themeMode: AppThemeMode.system,
+          pageDirection: PageDirection.rightToLeft,
+          doublePageMode: DoublePageMode.auto,
+          crossChapter: true,
+          cacheLimitMB: 500,
+          autoSyncInterval: AutoSyncInterval.off,
+          updatedAt: now,
+        ),
+      ),
     );
 
     await tester.pumpWidget(

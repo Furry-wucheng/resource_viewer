@@ -44,6 +44,7 @@
 | ThumbnailGenerator + LRU 缓存 | 阶段 03 §3.6~3.9 | `shared/thumbnail/`, `thumbnail_cache_service.dart` |
 | 图片查看器 + extended_image | 阶段 03 §3.18 | `ui/features/viewer/` |
 | 视频播放器 + media_kit | 阶段 03 §3.19 | `ui/features/viewer/video_player_page.dart` |
+| SMB/网络源视频播放代理 | 阶段 05 + 阶段 06 | `shared/content_provider/video_media_source.dart`, `data/services/video_stream_service.dart` |
 | 标签交集查询 GROUP BY HAVING | 阶段 04 §4.1 | `tag_repository.dart` |
 | dart_smb2 + SmbFileSource | 阶段 05 §5.2~5.3 | `shared/file_source/smb_file_source.dart` |
 | flutter_secure_storage | 阶段 05 §5.1 | `secure_storage_service.dart` |

@@ -11,7 +11,10 @@ import '../../../domain/models/resource.dart' as domain;
 import '../../../domain/use_cases/detect_organization_mode_use_case.dart';
 import '../../../shared/content_provider/image_folder_provider.dart';
 import '../../../shared/content_provider/pdf_provider.dart';
+import '../../../shared/content_provider/video_media_source.dart';
+import '../../../shared/file_source/file_source.dart';
 import '../../../shared/file_source/file_source_factory.dart';
+import '../../../shared/file_source/local_file_source.dart';
 import '../../features/home/view_models/home_view_model.dart'
     show favoriteTagId;
 import 'chapter_list_page.dart';
@@ -253,7 +256,7 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
       await _showViewerWidget(
         VideoViewerPage(
           title: resource.name,
-          filePath: p.join(_sourceRootPath ?? '', resource.relativePath),
+          videoSource: await _videoSource(resource, fileSource),
           isFavorited: _isFavorited,
           onFavoriteTap: _toggleFavorite,
         ),
@@ -278,6 +281,32 @@ class _ResourceViewerPageState extends State<ResourceViewerPage> {
       );
       if (result is Ok && mounted) setState(() => _isFavorited = true);
     }
+  }
+
+  Future<VideoMediaSource> _videoSource(
+    domain.Resource resource,
+    FileSource fileSource,
+  ) async {
+    if (fileSource is LocalFileSource) {
+      final rootPath = _sourceRootPath ?? fileSource.rootPath;
+      return VideoMediaSource.localFile(
+        p.join(rootPath, resource.relativePath),
+      );
+    }
+
+    final size =
+        resource.fileSize?.toInt() ??
+        await _statSize(fileSource, resource.relativePath);
+    return VideoMediaSource.proxiedFile(
+      fileSource: fileSource,
+      relativePath: resource.relativePath,
+      fileSize: size,
+    );
+  }
+
+  Future<int> _statSize(FileSource fileSource, String relativePath) async {
+    final entry = await fileSource.stat(relativePath);
+    return entry?.size?.toInt() ?? 0;
   }
 
   dynamic _fail(String message) {

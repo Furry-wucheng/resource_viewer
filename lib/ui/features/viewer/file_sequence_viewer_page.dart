@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../domain/models/file_entry.dart';
+import '../../../shared/content_provider/video_media_source.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import '../../../shared/file_source/file_source.dart';
+import '../../../shared/file_source/local_file_source.dart';
 import '../../../shared/media/media_file_types.dart';
 import 'viewer_page.dart';
 
@@ -28,7 +30,7 @@ class FileSequenceViewerPage extends StatelessWidget {
       if (_isVideo(entry)) {
         return ViewerMediaItem.video(
           title: entry.name,
-          videoPath: p.join(localRootPath, entry.path),
+          videoSource: _videoSource(entry),
         );
       }
       return ViewerMediaItem.image(
@@ -40,6 +42,19 @@ class FileSequenceViewerPage extends StatelessWidget {
       title: entries[initialIndex].name,
       items: items,
       initialPage: initialIndex,
+    );
+  }
+
+  VideoMediaSource _videoSource(FileEntry entry) {
+    final source = fileSource;
+    if (source is LocalFileSource) {
+      final rootPath = localRootPath.isEmpty ? source.rootPath : localRootPath;
+      return VideoMediaSource.localFile(p.join(rootPath, entry.path));
+    }
+    return VideoMediaSource.proxiedFile(
+      fileSource: fileSource,
+      relativePath: entry.path,
+      fileSize: entry.size?.toInt() ?? 0,
     );
   }
 

@@ -25,6 +25,16 @@ abstract class FileSource {
   /// 流式读取文件（适用于大文件，如视频）
   Stream<Uint8List> streamFile(String relativePath);
 
+  /// 随机读取文件的一段字节（适用于视频 seek / HTTP Range）
+  ///
+  /// [offset] 为从文件开头起算的字节偏移， [length] 为期望读取长度。
+  /// 如果请求越过文件末尾，具体实现可返回短读。
+  Future<Uint8List> readRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  });
+
   /// 测试连接是否可达
   ///
   /// 本地源：检查路径是否存在。

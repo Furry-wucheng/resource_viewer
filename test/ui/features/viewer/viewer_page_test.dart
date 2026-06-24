@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mocktail/mocktail.dart';
@@ -367,6 +368,12 @@ final kMinimalJpeg = Uint8List.fromList([
   0xD9,
 ]);
 
+Uint8List widePng() {
+  final image = img.Image(width: 4, height: 2);
+  img.fill(image, color: img.ColorRgb8(255, 255, 255));
+  return Uint8List.fromList(img.encodePng(image));
+}
+
 class MockContentProvider extends Mock implements ContentProvider {}
 
 void main() {
@@ -395,8 +402,9 @@ void main() {
       ).thenAnswer((_) async => kMinimalJpeg);
       when(() => mockProvider.dispose()).thenAnswer((_) async {});
       // 默认返回成功配置
-      when(() => mockSettingsRepo.getConfig())
-          .thenAnswer((_) async => Ok(defaultConfig()));
+      when(
+        () => mockSettingsRepo.getConfig(),
+      ).thenAnswer((_) async => Ok(defaultConfig()));
     });
 
     tearDown(() {
@@ -520,9 +528,9 @@ void main() {
 
     testWidgets('资源库翻页使用跟手 PageView 动画', (tester) async {
       when(() => mockSettingsRepo.getConfig()).thenAnswer(
-        (_) async => Ok(defaultConfig().copyWith(
-          pageDirection: PageDirection.leftToRight,
-        )),
+        (_) async => Ok(
+          defaultConfig().copyWith(pageDirection: PageDirection.leftToRight),
+        ),
       );
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
@@ -554,9 +562,9 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       when(() => mockSettingsRepo.getConfig()).thenAnswer(
-        (_) async => Ok(defaultConfig().copyWith(
-          pageDirection: PageDirection.leftToRight,
-        )),
+        (_) async => Ok(
+          defaultConfig().copyWith(pageDirection: PageDirection.leftToRight),
+        ),
       );
       await tester.pumpWidget(buildViewer());
       await tester.pumpAndSettle();
@@ -586,9 +594,8 @@ void main() {
     testWidgets('宽屏双页模式按首页单页后每次两页显示', (tester) async {
       when(() => mockProvider.pageCount).thenReturn(5);
       when(() => mockSettingsRepo.getConfig()).thenAnswer(
-        (_) async => Ok(defaultConfig().copyWith(
-          doublePageMode: DoublePageMode.double,
-        )),
+        (_) async =>
+            Ok(defaultConfig().copyWith(doublePageMode: DoublePageMode.double)),
       );
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1200, 800);
@@ -624,9 +631,8 @@ void main() {
     testWidgets('双页模式无法配对的末页居中单独显示', (tester) async {
       when(() => mockProvider.pageCount).thenReturn(4);
       when(() => mockSettingsRepo.getConfig()).thenAnswer(
-        (_) async => Ok(defaultConfig().copyWith(
-          doublePageMode: DoublePageMode.double,
-        )),
+        (_) async =>
+            Ok(defaultConfig().copyWith(doublePageMode: DoublePageMode.double)),
       );
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1200, 800);
@@ -649,6 +655,45 @@ void main() {
         find.byKey(const ValueKey('viewer-singleton-spread-3')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('宽图不参与双页配对', (tester) async {
+      when(() => mockProvider.pageCount).thenReturn(3);
+      when(() => mockProvider.loadPage(any())).thenAnswer((invocation) async {
+        final index = invocation.positionalArguments.first as int;
+        return index == 1 ? widePng() : kMinimalJpeg;
+      });
+      when(() => mockSettingsRepo.getConfig()).thenAnswer(
+        (_) async =>
+            Ok(defaultConfig().copyWith(doublePageMode: DoublePageMode.double)),
+      );
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1200, 800);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(buildViewer());
+      await tester.pumpAndSettle();
+
+      final size = tester.getSize(
+        find.byKey(const ValueKey('viewer-interaction-layer')),
+      );
+      await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2 / 3'), findsOneWidget);
+      expect(find.byKey(const ValueKey('viewer-page-view')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('viewer-double-page-view')),
+        findsNothing,
+      );
+
+      await tester.tapAt(Offset(size.width * 0.1, size.height * 0.5));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 / 3'), findsOneWidget);
     });
 
     testWidgets('默认 RTL 左滑上一页', (tester) async {

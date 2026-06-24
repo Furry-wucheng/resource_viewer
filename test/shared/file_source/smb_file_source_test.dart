@@ -120,18 +120,25 @@ void main() {
       when(
         () => pool.streamFile('cover.jpg'),
       ).thenAnswer((_) => Stream.value(Uint8List.fromList([1, 2, 3])));
+      when(
+        () => pool.readFileRange('cover.jpg', offset: 1, length: 2),
+      ).thenAnswer((_) async => Uint8List.fromList([2, 3]));
       when(() => pool.echo()).thenAnswer((_) async {});
       when(() => pool.disconnect()).thenAnswer((_) async {});
 
       expect((await source.stat('cover.jpg'))?.size, BigInt.from(3));
       expect(await source.readFile('cover.jpg'), [1, 2, 3]);
       expect(await source.streamFile('cover.jpg').single, [1, 2, 3]);
+      expect(await source.readRange('cover.jpg', offset: 1, length: 2), [2, 3]);
       expect(await source.testConnection(), isTrue);
       await source.disconnect();
 
       verify(() => pool.stat('cover.jpg')).called(1);
       verify(() => pool.readFile('cover.jpg')).called(1);
       verify(() => pool.streamFile('cover.jpg')).called(1);
+      verify(
+        () => pool.readFileRange('cover.jpg', offset: 1, length: 2),
+      ).called(1);
       verify(() => pool.echo()).called(1);
       verify(() => pool.disconnect()).called(1);
     });

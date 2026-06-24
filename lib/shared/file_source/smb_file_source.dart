@@ -154,6 +154,17 @@ class SmbFileSource implements FileSource {
   }
 
   @override
+  Future<Uint8List> readRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) async {
+    final pool = await _ensurePool();
+    final smbPath = _toSmbPath(relativePath);
+    return pool.readFileRange(smbPath, offset: offset, length: length);
+  }
+
+  @override
   Future<bool> testConnection() async {
     final pool = await _ensurePool();
     await pool.echo();
@@ -252,6 +263,11 @@ abstract class SmbPoolClient {
   Future<Smb2Stat> stat(String path);
   Future<Uint8List> readFile(String path);
   Stream<Uint8List> streamFile(String path);
+  Future<Uint8List> readFileRange(
+    String path, {
+    required int offset,
+    required int length,
+  });
   Future<void> echo();
   Future<void> disconnect();
 }
@@ -273,6 +289,13 @@ class _DartSmbPoolClient implements SmbPoolClient {
 
   @override
   Stream<Uint8List> streamFile(String path) => pool.streamFile(path);
+
+  @override
+  Future<Uint8List> readFileRange(
+    String path, {
+    required int offset,
+    required int length,
+  }) => pool.readFileRange(path, offset: offset, length: length);
 
   @override
   Future<void> echo() => pool.echo();

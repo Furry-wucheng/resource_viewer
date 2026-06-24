@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'data/services/database_service.dart';
 import 'data/services/secure_storage_service.dart';
 import 'data/services/thumbnail_cache_service.dart';
+import 'data/services/video_stream_service.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/repositories/source_repository.dart';
 import 'data/repositories/resource_repository.dart';
@@ -111,6 +112,10 @@ class _ResourceViewerAppState extends State<ResourceViewerApp>
           },
         ),
         Provider(create: (_) => ThumbnailCacheService()),
+        Provider(
+          create: (_) => VideoStreamService(),
+          dispose: (_, service) => unawaited(service.dispose()),
+        ),
 
         // Repositories（依赖 DatabaseService）
         Provider<SettingsRepository>.value(value: _settingsRepository),

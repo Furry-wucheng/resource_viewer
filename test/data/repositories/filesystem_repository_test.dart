@@ -168,6 +168,13 @@ class _CountingFileSource implements FileSource {
   Future<Uint8List> readFile(String relativePath) => throw UnimplementedError();
 
   @override
+  Future<Uint8List> readRange(
+    String relativePath, {
+    required int offset,
+    required int length,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FileEntry?> stat(String relativePath) => throw UnimplementedError();
 
   @override

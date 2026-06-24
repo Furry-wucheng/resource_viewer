@@ -13,7 +13,9 @@ import '../../../domain/models/chapter.dart';
 import '../../../domain/models/file_entry.dart';
 import '../../../domain/models/resource.dart';
 import '../../../shared/file_source/file_source.dart';
+import '../../../shared/file_source/local_file_source.dart';
 import '../../../shared/content_provider/image_folder_provider.dart';
+import '../../../shared/content_provider/video_media_source.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import '../../../shared/media/media_file_types.dart';
 import '../../../shared/organization/chapter_strategy.dart';
@@ -628,7 +630,7 @@ class _ChapterListPageState extends State<ChapterListPage> {
       if (_isVideo(entry)) {
         return ViewerMediaItem.video(
           title: entry.name,
-          videoPath: p.join('', entry.path),
+          videoSource: _videoSource(entry),
         );
       }
       return ViewerMediaItem.image(
@@ -636,6 +638,18 @@ class _ChapterListPageState extends State<ChapterListPage> {
         loadImage: () => widget.fileSource.readFile(entry.path),
       );
     }).toList();
+  }
+
+  VideoMediaSource _videoSource(FileEntry entry) {
+    final source = widget.fileSource;
+    if (source is LocalFileSource) {
+      return VideoMediaSource.localFile(p.join(source.rootPath, entry.path));
+    }
+    return VideoMediaSource.proxiedFile(
+      fileSource: widget.fileSource,
+      relativePath: entry.path,
+      fileSize: entry.size?.toInt() ?? 0,
+    );
   }
 
   int? _chapterIndexOf(Chapter chapter) {

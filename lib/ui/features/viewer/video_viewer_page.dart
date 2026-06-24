@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/content_provider/video_media_source.dart';
 import '../../../shared/content_provider/viewer_media_item.dart';
 import 'viewer_page.dart';
 
@@ -8,13 +9,13 @@ class VideoViewerPage extends StatelessWidget {
   const VideoViewerPage({
     super.key,
     required this.title,
-    required this.filePath,
+    required this.videoSource,
     this.isFavorited = false,
     this.onFavoriteTap,
   });
 
   final String title;
-  final String filePath;
+  final VideoMediaSource videoSource;
   final bool isFavorited;
   final VoidCallback? onFavoriteTap;
 
@@ -22,7 +23,7 @@ class VideoViewerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ViewerPage.media(
       title: title,
-      items: [ViewerMediaItem.video(title: title, videoPath: filePath)],
+      items: [ViewerMediaItem.video(title: title, videoSource: videoSource)],
       isFavorited: isFavorited,
       onFavoriteTap: onFavoriteTap,
     );

@@ -57,7 +57,7 @@ class _FileViewerPageState extends State<FileViewerPage> {
       Err(:final error) => _fail(error.message),
     };
     if (source == null) return;
-    final fileSource = fileSourceFactory.create(source);
+    final fileSource = await fileSourceFactory.createAsync(source);
 
     // 文件浏览器查看始终以当前目录的同层级兼容媒体为上下文。
     final normalizedPath = widget.entry.path.replaceAll('\\', '/');

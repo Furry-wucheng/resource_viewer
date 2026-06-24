@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 
+import '../../../../data/services/video_stream_service.dart';
+import '../../../../shared/content_provider/video_media_source.dart';
 import 'video_progress_bar.dart';
 import 'video_seek_gesture_area.dart';
 
@@ -28,14 +31,14 @@ class VideoPlaybackController {
 class VideoPlayerWidget extends StatefulWidget {
   const VideoPlayerWidget({
     super.key,
-    required this.filePath,
+    required this.source,
     this.onToggleToolbar,
     this.controlsVisible = true,
     this.active = true,
     this.playbackController,
   });
 
-  final String filePath;
+  final VideoMediaSource source;
   final VoidCallback? onToggleToolbar;
   final bool controlsVisible;
   final bool active;
@@ -48,6 +51,7 @@ class VideoPlayerWidget extends StatefulWidget {
 class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   late final Player _player;
   late final VideoController _controller;
+  late final VideoStreamService _streamService;
   bool _speedMode = false;
   double _speed = 1;
   double _dragOriginY = 0;
@@ -57,16 +61,18 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   bool _seekInProgress = false;
   bool _scrubEnding = false;
   bool _resumeAfterScrub = false;
+  VideoStreamHandle? _streamHandle;
 
   static const _speedSteps = <double>[1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
   @override
   void initState() {
     super.initState();
+    _streamService = context.read<VideoStreamService>();
     _player = Player();
     widget.playbackController?._attach(_player);
     _controller = VideoController(_player);
-    _player.open(Media(widget.filePath), play: widget.active);
+    unawaited(_open(widget.source));
   }
 
   @override
@@ -76,12 +82,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       oldWidget.playbackController?._detach(_player);
       widget.playbackController?._attach(_player);
     }
+    if (!_sameSource(oldWidget.source, widget.source)) {
+      unawaited(_open(widget.source));
+    }
     if (oldWidget.active && !widget.active) _player.pause();
   }
 
   @override
   void dispose() {
     _scrubTimer?.cancel();
+    unawaited(_revokeStreamHandle());
     widget.playbackController?._detach(_player);
     _player.dispose();
     super.dispose();
@@ -215,6 +225,45 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _dragOriginY = details.globalPosition.dy;
     _setSpeed(2);
     setState(() => _speedMode = true);
+  }
+
+  Future<void> _open(VideoMediaSource source) async {
+    await _revokeStreamHandle();
+    if (!mounted) return;
+    if (source.kind == VideoMediaSourceKind.localFile) {
+      await _player.open(Media(source.path!), play: widget.active);
+      return;
+    }
+
+    final handle = await _streamService.register(
+      fileSource: source.fileSource!,
+      relativePath: source.relativePath!,
+      fileSize: source.fileSize!,
+    );
+    if (!mounted) {
+      await _streamService.revoke(handle);
+      return;
+    }
+    _streamHandle = handle;
+    await _player.open(Media(handle.uri.toString()), play: widget.active);
+  }
+
+  Future<void> _revokeStreamHandle() async {
+    final handle = _streamHandle;
+    if (handle == null) return;
+    _streamHandle = null;
+    await _streamService.revoke(handle);
+  }
+
+  bool _sameSource(VideoMediaSource a, VideoMediaSource b) {
+    if (a.kind != b.kind) return false;
+    return switch (a.kind) {
+      VideoMediaSourceKind.localFile => a.path == b.path,
+      VideoMediaSourceKind.proxiedFile =>
+        identical(a.fileSource, b.fileSource) &&
+            a.relativePath == b.relativePath &&
+            a.fileSize == b.fileSize,
+    };
   }
 
   void _updateSpeedMode(LongPressMoveUpdateDetails details) {

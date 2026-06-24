@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 
 import '../../../data/repositories/settings_repository.dart';
@@ -92,7 +93,11 @@ class _ViewerPageState extends State<ViewerPage> {
   // 窗口宽度（用于双页判断）
   double _windowWidth = 0;
   bool _lastDoublePage = false;
+  List<_ViewerPosition> _lastPositions = const [];
   PageDirection? _lastPageDirection;
+  final Map<int, double> _imageAspectRatios = {};
+
+  static const double _wideImageAspectRatio = 1.2;
 
   @override
   void initState() {
@@ -167,11 +172,16 @@ class _ViewerPageState extends State<ViewerPage> {
         builder: (context, vm, _) => LayoutBuilder(
           builder: (context, constraints) {
             _windowWidth = constraints.maxWidth;
-            // 双页模式判断
-            final setting = vm.doublePageModeSetting;
-            final isDoublePage =
-                setting == DoublePageMode.double ||
-                (setting == DoublePageMode.auto && _windowWidth >= 900);
+            // 双页模式判断。视频页不进入双页，宽图/尺寸未知图不参与配对。
+            final requestedDoublePage = _doublePageRequested(vm);
+            var isDoublePage = requestedDoublePage;
+            var positions = _viewerPositions(vm, requestedDoublePage);
+            if (requestedDoublePage &&
+                !positions.any((position) => position.isDouble)) {
+              isDoublePage = false;
+              positions = _viewerPositions(vm, isDoublePage);
+            }
+            _lastPositions = positions;
             final canSyncViewport =
                 vm.viewerState == ViewerState.loaded && vm.totalPages > 0;
             if (canSyncViewport &&
@@ -182,7 +192,12 @@ class _ViewerPageState extends State<ViewerPage> {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted && _pageController.hasClients) {
                   _pageController.jumpToPage(
-                    _visualPositionForPage(vm.currentPage, vm, isDoublePage),
+                    _visualPositionForPage(
+                      vm.currentPage,
+                      vm,
+                      isDoublePage,
+                      positions,
+                    ),
                   );
                 }
               });
@@ -198,7 +213,12 @@ class _ViewerPageState extends State<ViewerPage> {
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
                   ViewerState.error => _buildErrorView(vm),
-                  ViewerState.loaded => _buildViewer(context, vm, isDoublePage),
+                  ViewerState.loaded => _buildViewer(
+                    context,
+                    vm,
+                    isDoublePage,
+                    positions,
+                  ),
                 },
               ),
             );
@@ -212,6 +232,7 @@ class _ViewerPageState extends State<ViewerPage> {
     BuildContext context,
     ViewerViewModel vm,
     bool isDoublePage,
+    List<_ViewerPosition> positions,
   ) {
     final isVideo = vm.currentItem.type == ViewerMediaType.video;
     return Stack(
@@ -235,20 +256,24 @@ class _ViewerPageState extends State<ViewerPage> {
               // right. Reading direction is represented by the
               // visual-position-to-page mapping below.
               reverse: false,
-              itemCount: isDoublePage ? 1 + vm.totalPages ~/ 2 : vm.totalPages,
+              itemCount: positions.length,
               onPageChanged: (position) {
                 _resetZoom();
-                vm.goToPage(_pageForVisualPosition(position, vm, isDoublePage));
+                vm.goToPage(
+                  _pageForVisualPosition(position, vm, isDoublePage, positions),
+                );
               },
               itemBuilder: (context, position) {
                 final logicalPosition = _logicalPositionForVisual(
                   position,
                   vm,
                   isDoublePage,
+                  positions,
                 );
+                final viewerPosition = positions[logicalPosition];
                 return isDoublePage
-                    ? _buildDoublePageSpread(vm, logicalPosition)
-                    : _buildMediaPage(vm, logicalPosition);
+                    ? _buildViewerPosition(vm, viewerPosition)
+                    : _buildMediaPage(vm, viewerPosition.first);
               },
             ),
           ),
@@ -321,8 +346,8 @@ class _ViewerPageState extends State<ViewerPage> {
     final item = vm.itemAt(index);
     if (item.type == ViewerMediaType.video) {
       return VideoPlayerWidget(
-        key: ValueKey('video-$index-${item.videoPath}'),
-        filePath: item.videoPath!,
+        key: ValueKey('video-$index-${item.videoSource}'),
+        source: item.videoSource!,
         active: index == vm.currentPage,
         controlsVisible: vm.isToolbarVisible,
         playbackController: _videoControllers.putIfAbsent(
@@ -339,6 +364,7 @@ class _ViewerPageState extends State<ViewerPage> {
     }
     final cachedBytes = vm.cachedPageContent(index);
     if (cachedBytes != null) {
+      _ensureAspectRatio(index, cachedBytes);
       final image = MemoryImage(cachedBytes);
       _readyImages[index] = image;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -363,21 +389,17 @@ class _ViewerPageState extends State<ViewerPage> {
     );
   }
 
-  Widget _buildDoublePageSpread(ViewerViewModel vm, int spread) {
-    final first = _firstPageForSpread(spread);
-    if (spread == 0) {
-      return _buildMediaPage(vm, first);
-    }
-    final second = first + 1;
-    if (second >= vm.totalPages) {
+  Widget _buildViewerPosition(ViewerViewModel vm, _ViewerPosition position) {
+    final second = position.second;
+    if (second == null) {
       return KeyedSubtree(
-        key: ValueKey('viewer-singleton-spread-$first'),
-        child: _buildMediaPage(vm, first),
+        key: ValueKey('viewer-singleton-spread-${position.first}'),
+        child: _buildMediaPage(vm, position.first),
       );
     }
     final pages = vm.pageDirection == PageDirection.rightToLeft
-        ? <int?>[second, first]
-        : <int?>[first, second];
+        ? <int?>[second, position.first]
+        : <int?>[position.first, second];
     return Row(
       children: pages.indexed
           .map(
@@ -397,13 +419,11 @@ class _ViewerPageState extends State<ViewerPage> {
     );
   }
 
-  int _firstPageForSpread(int spread) => spread == 0 ? 0 : 1 + (spread - 1) * 2;
-
-  int _spreadForPage(int page) => page == 0 ? 0 : 1 + (page - 1) ~/ 2;
-
   Future<MemoryImage?> _loadImage(ViewerViewModel vm, int index) async {
     final bytes = await vm.getPageContent(index);
     if (bytes == null || !mounted) return null;
+    _ensureAspectRatio(index, bytes);
+    if (!mounted) return null;
     final image = MemoryImage(bytes);
     setState(() => _readyImages[index] = image);
     await precacheImage(image, context);
@@ -477,6 +497,9 @@ class _ViewerPageState extends State<ViewerPage> {
   Future<MemoryImage?> _retryImage(ViewerViewModel vm, int index) async {
     final bytes = await vm.retryPage(index);
     if (bytes == null || !mounted) return null;
+    _imageAspectRatios.remove(index);
+    _ensureAspectRatio(index, bytes);
+    if (!mounted) return null;
     final image = MemoryImage(bytes);
     setState(() => _readyImages[index] = image);
     await precacheImage(image, context);
@@ -637,51 +660,66 @@ class _ViewerPageState extends State<ViewerPage> {
     }
     _resetZoom();
     _pageController.animateToPage(
-      _visualPositionForPage(page, _viewModel, _lastDoublePage),
+      _visualPositionForPage(page, _viewModel, _lastDoublePage, _lastPositions),
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
     );
   }
 
-  int _positionCount(ViewerViewModel vm, bool isDoublePage) =>
-      isDoublePage ? 1 + vm.totalPages ~/ 2 : vm.totalPages;
+  int _positionCount(
+    ViewerViewModel vm,
+    bool isDoublePage,
+    List<_ViewerPosition> positions,
+  ) => positions.length;
 
   int _logicalPositionForVisual(
     int visualPosition,
     ViewerViewModel vm,
     bool isDoublePage,
+    List<_ViewerPosition> positions,
   ) {
     if (vm.pageDirection == PageDirection.leftToRight) return visualPosition;
-    return _positionCount(vm, isDoublePage) - 1 - visualPosition;
+    return _positionCount(vm, isDoublePage, positions) - 1 - visualPosition;
   }
 
   int _visualPositionForLogical(
     int logicalPosition,
     ViewerViewModel vm,
     bool isDoublePage,
+    List<_ViewerPosition> positions,
   ) {
     if (vm.pageDirection == PageDirection.leftToRight) return logicalPosition;
-    return _positionCount(vm, isDoublePage) - 1 - logicalPosition;
+    return _positionCount(vm, isDoublePage, positions) - 1 - logicalPosition;
   }
 
-  int _visualPositionForPage(int page, ViewerViewModel vm, bool isDoublePage) {
-    final logicalPosition = isDoublePage ? _spreadForPage(page) : page;
-    return _visualPositionForLogical(logicalPosition, vm, isDoublePage);
+  int _visualPositionForPage(
+    int page,
+    ViewerViewModel vm,
+    bool isDoublePage,
+    List<_ViewerPosition> positions,
+  ) {
+    final logicalPosition = _positionForPage(page, positions);
+    return _visualPositionForLogical(
+      logicalPosition,
+      vm,
+      isDoublePage,
+      positions,
+    );
   }
 
   int _pageForVisualPosition(
     int visualPosition,
     ViewerViewModel vm,
     bool isDoublePage,
+    List<_ViewerPosition> positions,
   ) {
     final logicalPosition = _logicalPositionForVisual(
       visualPosition,
       vm,
       isDoublePage,
+      positions,
     );
-    return isDoublePage
-        ? _firstPageForSpread(logicalPosition)
-        : logicalPosition;
+    return positions[logicalPosition].first;
   }
 
   int? _nextPage(ViewerViewModel vm) {
@@ -690,9 +728,10 @@ class _ViewerPageState extends State<ViewerPage> {
       final next = currentPage + 1;
       return next < vm.totalPages ? next : null;
     }
-    final nextSpread = _spreadForPage(currentPage) + 1;
-    final next = _firstPageForSpread(nextSpread);
-    return next < vm.totalPages ? next : null;
+    final nextPosition = _positionForPage(currentPage, _lastPositions) + 1;
+    return nextPosition < _lastPositions.length
+        ? _lastPositions[nextPosition].first
+        : null;
   }
 
   int? _previousPage(ViewerViewModel vm) {
@@ -701,15 +740,22 @@ class _ViewerPageState extends State<ViewerPage> {
       final previous = currentPage - 1;
       return previous >= 0 ? previous : null;
     }
-    final previousSpread = _spreadForPage(currentPage) - 1;
-    return previousSpread >= 0 ? _firstPageForSpread(previousSpread) : null;
+    final previousPosition = _positionForPage(currentPage, _lastPositions) - 1;
+    return previousPosition >= 0
+        ? _lastPositions[previousPosition].first
+        : null;
   }
 
   int _logicalPageAtViewport(ViewerViewModel vm) {
     if (!_pageController.hasClients) return vm.currentPage;
     final visualPosition = _pageController.page?.round();
     if (visualPosition == null) return vm.currentPage;
-    return _pageForVisualPosition(visualPosition, vm, _lastDoublePage);
+    return _pageForVisualPosition(
+      visualPosition,
+      vm,
+      _lastDoublePage,
+      _lastPositions,
+    );
   }
 
   void _goNext(ViewerViewModel vm) {
@@ -753,4 +799,92 @@ class _ViewerPageState extends State<ViewerPage> {
       controller.value = Matrix4.identity();
     }
   }
+
+  bool _doublePageRequested(ViewerViewModel vm) {
+    final setting = vm.doublePageModeSetting;
+    if (setting == DoublePageMode.single) return false;
+    if (vm.currentItem.type == ViewerMediaType.video) return false;
+    return setting == DoublePageMode.double ||
+        (setting == DoublePageMode.auto && _windowWidth >= 900);
+  }
+
+  List<_ViewerPosition> _viewerPositions(
+    ViewerViewModel vm,
+    bool isDoublePage,
+  ) {
+    if (!isDoublePage) {
+      return List.generate(vm.totalPages, _ViewerPosition.single);
+    }
+
+    final positions = <_ViewerPosition>[];
+    var page = 0;
+    while (page < vm.totalPages) {
+      if (page == 0 || !_canPairPage(vm, page)) {
+        positions.add(_ViewerPosition.single(page));
+        page++;
+        continue;
+      }
+
+      final next = page + 1;
+      if (next < vm.totalPages && _canPairPage(vm, next)) {
+        positions.add(_ViewerPosition.double(page, next));
+        page += 2;
+      } else {
+        positions.add(_ViewerPosition.single(page));
+        page++;
+      }
+    }
+    return positions;
+  }
+
+  bool _canPairPage(ViewerViewModel vm, int page) {
+    if (vm.itemAt(page).type == ViewerMediaType.video) return false;
+    final aspectRatio = _imageAspectRatios[page];
+    if (aspectRatio == null) {
+      final cachedBytes = vm.cachedPageContent(page);
+      if (cachedBytes != null) {
+        _ensureAspectRatio(page, cachedBytes);
+        final resolved = _imageAspectRatios[page];
+        if (resolved != null) return resolved < _wideImageAspectRatio;
+      }
+      return true;
+    }
+    return aspectRatio < _wideImageAspectRatio;
+  }
+
+  int _positionForPage(int page, List<_ViewerPosition> positions) {
+    if (positions.isEmpty) return 0;
+    final index = positions.indexWhere((position) => position.contains(page));
+    return index < 0 ? page.clamp(0, positions.length - 1) : index;
+  }
+
+  void _ensureAspectRatio(int index, Uint8List bytes) {
+    if (_imageAspectRatios.containsKey(index)) return;
+    final ratio = _decodeAspectRatio(bytes);
+    if (ratio == null) return;
+    _imageAspectRatios[index] = ratio;
+  }
+
+  double? _decodeAspectRatio(Uint8List bytes) {
+    try {
+      final image = img.decodeImage(bytes);
+      if (image == null || image.height == 0) return 0.75;
+      return image.width / image.height;
+    } catch (_) {
+      return 0.75;
+    }
+  }
+}
+
+class _ViewerPosition {
+  const _ViewerPosition.single(this.first) : second = null;
+
+  const _ViewerPosition.double(this.first, this.second);
+
+  final int first;
+  final int? second;
+
+  bool contains(int page) => first == page || second == page;
+
+  bool get isDouble => second != null;
 }
