@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -9,6 +8,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../data/services/pdf_render_service.dart';
 import '../file_source/file_source.dart';
+import 'isolate_pool.dart';
 import 'thumbnail_generator.dart';
 
 /// PDF 缩略图生成器
@@ -42,7 +42,7 @@ class PdfThumbnailGenerator implements ThumbnailGenerator {
         );
         if (pngBytes == null) return null;
 
-        return Isolate.run(() => _resizeAndCropToJpg(pngBytes));
+        return IsolatePool.instance.run(_resizeAndCropToJpg, pngBytes);
       } finally {
         await document.dispose();
       }

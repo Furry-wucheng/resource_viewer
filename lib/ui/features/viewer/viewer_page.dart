@@ -357,9 +357,16 @@ class _ViewerPageState extends State<ViewerPage> {
                   positions,
                 );
                 final viewerPosition = positions[logicalPosition];
+                final dpr = MediaQuery.devicePixelRatioOf(context);
+                // 双页模式下每页占一半宽度
+                final pageLogicalWidth = isDoublePage
+                    ? _windowWidth / 2
+                    : _windowWidth;
+                final cacheWidth = (pageLogicalWidth * dpr).round();
                 return isDoublePage
-                    ? _buildViewerPosition(vm, viewerPosition)
-                    : _buildMediaPage(vm, viewerPosition.first);
+                    ? _buildViewerPosition(vm, viewerPosition, cacheWidth)
+                    : _buildMediaPage(
+                        vm, viewerPosition.first, cacheWidth: cacheWidth);
               },
             ),
           ),
@@ -426,6 +433,7 @@ class _ViewerPageState extends State<ViewerPage> {
     ViewerViewModel vm,
     int index, {
     Alignment imageAlignment = Alignment.center,
+    int? cacheWidth,
   }) {
     final item = vm.itemAt(index);
     if (item.type == ViewerMediaType.video) {
@@ -444,7 +452,7 @@ class _ViewerPageState extends State<ViewerPage> {
 
     final ready = _readyImages[index];
     if (ready != null) {
-      return _imageView(vm, index, ready, alignment: imageAlignment);
+      return _imageView(vm, index, ready, alignment: imageAlignment, cacheWidth: cacheWidth);
     }
     final cachedBytes = vm.cachedPageContent(index);
     if (cachedBytes != null) {
@@ -454,14 +462,14 @@ class _ViewerPageState extends State<ViewerPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(precacheImage(image, context));
       });
-      return _imageView(vm, index, image, alignment: imageAlignment);
+      return _imageView(vm, index, image, alignment: imageAlignment, cacheWidth: cacheWidth);
     }
     return FutureBuilder<MemoryImage?>(
       future: _imageFutures.putIfAbsent(index, () => _loadImage(vm, index)),
       builder: (context, snapshot) {
         final image = snapshot.data;
         if (image != null) {
-          return _imageView(vm, index, image, alignment: imageAlignment);
+          return _imageView(vm, index, image, alignment: imageAlignment, cacheWidth: cacheWidth);
         }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -473,12 +481,12 @@ class _ViewerPageState extends State<ViewerPage> {
     );
   }
 
-  Widget _buildViewerPosition(ViewerViewModel vm, _ViewerPosition position) {
+  Widget _buildViewerPosition(ViewerViewModel vm, _ViewerPosition position, int cacheWidth) {
     final second = position.second;
     if (second == null) {
       return KeyedSubtree(
         key: ValueKey('viewer-singleton-spread-${position.first}'),
-        child: _buildMediaPage(vm, position.first),
+        child: _buildMediaPage(vm, position.first, cacheWidth: cacheWidth),
       );
     }
     final pages = vm.pageDirection == PageDirection.rightToLeft
@@ -493,6 +501,7 @@ class _ViewerPageState extends State<ViewerPage> {
                   : _buildMediaPage(
                       vm,
                       entry.$2!,
+                      cacheWidth: cacheWidth,
                       imageAlignment: entry.$1 == 0
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
@@ -519,6 +528,7 @@ class _ViewerPageState extends State<ViewerPage> {
     int index,
     MemoryImage image, {
     Alignment alignment = Alignment.center,
+    int? cacheWidth,
   }) {
     // 预创建 controller（双击缩放需要它），但不一定包 InteractiveViewer。
     final controller = _transformControllers.putIfAbsent(
@@ -529,7 +539,9 @@ class _ViewerPageState extends State<ViewerPage> {
     final content = Align(
       alignment: alignment,
       child: Image(
-        image: image,
+        image: cacheWidth != null
+            ? ResizeImage(image, width: cacheWidth)
+            : image,
         fit: BoxFit.contain,
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildPageError(vm, index),

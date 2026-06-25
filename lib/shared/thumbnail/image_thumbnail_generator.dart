@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -9,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../file_source/file_source.dart';
 import '../media/media_file_types.dart';
+import 'isolate_pool.dart';
 import 'thumbnail_generator.dart';
 
 /// 图片缩略图生成器
@@ -41,8 +41,9 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
 
       // 解码图片
       final extension = p.extension(firstImagePath).toLowerCase();
-      final thumbBytes = await Isolate.run(
-        () => _encodeThumbnail(imageBytes, extension),
+      final thumbBytes = await IsolatePool.instance.run(
+        _encodeThumbnail,
+        (imageBytes, extension),
       );
       if (thumbBytes == null) return null;
 
@@ -91,7 +92,8 @@ class ImageThumbnailGenerator implements ThumbnailGenerator {
     return visit(rootPath, 0);
   }
 
-  static List<int>? _encodeThumbnail(Uint8List bytes, String extension) {
+  static List<int>? _encodeThumbnail((Uint8List, String) args) {
+    final (bytes, extension) = args;
     final img.Image? decoded;
     try {
       decoded = img.decodeImage(bytes);

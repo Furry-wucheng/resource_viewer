@@ -211,11 +211,18 @@ class ViewerViewModel extends BaseViewModel {
   ViewerMediaItem itemAt(int index) => _items[index];
   ViewerMediaItem get currentItem => _items[_currentPage];
   String get toolbarTitle => _provider == null ? currentItem.title : title;
-  Uint8List? cachedPageContent(int page) => _pageCache[page];
+  Uint8List? cachedPageContent(int page) {
+    final bytes = _pageCache[page];
+    if (bytes != null) _touchPage(page);
+    return bytes;
+  }
 
   bool _isToolbarVisible = true;
   bool get isToolbarVisible => _isToolbarVisible;
   final Map<int, Uint8List> _pageCache = {};
+  final List<int> _pageAccessOrder = [];
+  int _cacheBytes = 0;
+  static const int _maxCacheBytes = 200 * 1024 * 1024; // 200MB
   final Map<int, Future<Uint8List?>> _pageLoads = {};
   final Set<int> _failedPages = {};
   bool _disposed = false;
@@ -246,7 +253,10 @@ class ViewerViewModel extends BaseViewModel {
   Future<Uint8List?> getPageContent(int page) async {
     if (_disposed || itemAt(page).type == ViewerMediaType.video) return null;
     final cached = _pageCache[page];
-    if (cached != null) return cached;
+    if (cached != null) {
+      _touchPage(page);
+      return cached;
+    }
     if (_failedPages.contains(page)) return null;
     final inFlight = _pageLoads[page];
     if (inFlight != null) return inFlight;
@@ -259,14 +269,19 @@ class ViewerViewModel extends BaseViewModel {
     try {
       final content = await itemAt(page).loadImage!();
       if (_disposed) return null;
+      _evictIfNeeded(content.length);
       _pageCache[page] = content;
+      _cacheBytes += content.length;
+      _touchPage(page);
       _failedPages.remove(page);
-      _notifyListeners();
+      // 仅当前页加载完成时通知，避免后台预加载触发 rebuild
+      // 导致 _viewerPositions 重算、双页配对突变引起跳页。
+      if (page == _currentPage) _notifyListeners();
       return content;
     } catch (_) {
       if (_disposed) return null;
       _failedPages.add(page);
-      _notifyListeners();
+      if (page == _currentPage) _notifyListeners();
       return null;
     } finally {
       _pageLoads.remove(page);
@@ -275,7 +290,7 @@ class ViewerViewModel extends BaseViewModel {
 
   Future<Uint8List?> retryPage(int page) async {
     _failedPages.remove(page);
-    _pageCache.remove(page);
+    _removePage(page);
     _pageLoads.remove(page);
     return getPageContent(page);
   }
@@ -287,12 +302,19 @@ class ViewerViewModel extends BaseViewModel {
   }
 
   Future<void> _preloadPages(int centerPage) async {
+    const preloadRadius = 3;
+    // 当前页同步加载
     if (_canPreloadPage(centerPage)) {
       await getPageContent(centerPage);
     }
-    final nextPage = centerPage + 1;
-    if (_canPreloadPage(nextPage)) {
-      unawaited(getPageContent(nextPage));
+    // ±3 页异步预加载
+    for (var offset = 1; offset <= preloadRadius; offset++) {
+      if (_canPreloadPage(centerPage + offset)) {
+        unawaited(getPageContent(centerPage + offset));
+      }
+      if (_canPreloadPage(centerPage - offset)) {
+        unawaited(getPageContent(centerPage - offset));
+      }
     }
   }
 
@@ -303,6 +325,33 @@ class ViewerViewModel extends BaseViewModel {
       !_pageCache.containsKey(page) &&
       !_failedPages.contains(page);
 
+  void _touchPage(int page) {
+    _pageAccessOrder.remove(page);
+    _pageAccessOrder.add(page);
+  }
+
+  void _removePage(int page) {
+    final bytes = _pageCache.remove(page);
+    if (bytes != null) _cacheBytes -= bytes.length;
+    _pageAccessOrder.remove(page);
+  }
+
+  void _evictIfNeeded(int incomingBytes) {
+    while (_cacheBytes + incomingBytes > _maxCacheBytes &&
+        _pageAccessOrder.isNotEmpty) {
+      final oldest = _pageAccessOrder.first;
+      // 不淘汰当前页和正在加载的页
+      if (oldest == _currentPage || _pageLoads.containsKey(oldest)) {
+        if (_pageAccessOrder.length <= 1) break;
+        // 跳到下一个候选
+        _pageAccessOrder.removeAt(0);
+        _pageAccessOrder.add(oldest);
+        continue;
+      }
+      _removePage(oldest);
+    }
+  }
+
   @override
   Future<void> retry() => init();
 
@@ -310,6 +359,9 @@ class ViewerViewModel extends BaseViewModel {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _pageCache.clear();
+    _pageAccessOrder.clear();
+    _cacheBytes = 0;
     if (_provider != null) unawaited(_provider.dispose());
     final onDispose = _onDispose;
     _onDispose = null;

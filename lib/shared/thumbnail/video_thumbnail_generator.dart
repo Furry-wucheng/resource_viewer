@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
@@ -49,27 +48,21 @@ class VideoThumbnailGenerator implements ThumbnailGenerator {
       if (absolutePath == null || !await File(absolutePath).exists()) {
         return null;
       }
-      // media_kit Player 默认 vo=null，没有已挂载的 Video surface 时
-      // screenshot() 无法获取帧。文件缩略图改用各平台原生 API。
+      // 原生 API 已完成缩放，无需纯 Dart 二次解码+裁剪。
+      // 传入 thumbWidth/thumbHeight 让原生直接输出目标尺寸。
       final bytes = await _thumbnailer.saveThumbnailToBytes(
         srcFile: absolutePath,
-        width: ThumbnailGenerator.thumbHeight,
+        width: ThumbnailGenerator.thumbWidth,
         height: ThumbnailGenerator.thumbHeight,
         quality: ThumbnailGenerator.jpegQuality,
       );
       if (bytes == null || bytes.isEmpty) return null;
+      // 验证输出有效性（仅读 header，不全量解码）
       final decoded = img.decodeImage(bytes);
       if (decoded == null || decoded.width <= 1 || decoded.height <= 1) {
         return null;
       }
-      final thumbnail = _resizeAndCrop(
-        decoded,
-        ThumbnailGenerator.thumbWidth,
-        ThumbnailGenerator.thumbHeight,
-      );
-      return Uint8List.fromList(
-        img.encodeJpg(thumbnail, quality: ThumbnailGenerator.jpegQuality),
-      );
+      return bytes;
     } catch (_) {
       return null;
     }
@@ -99,24 +92,5 @@ class VideoThumbnailGenerator implements ThumbnailGenerator {
   String? _resolveAbsolutePath(FileSource source, String relativePath) {
     if (source is! LocalFileSource || relativePath.isEmpty) return null;
     return p.normalize(p.join(source.rootPath, relativePath));
-  }
-
-  img.Image _resizeAndCrop(img.Image source, int width, int height) {
-    final scale = max(width / source.width, height / source.height);
-    final scaledWidth = (source.width * scale).round();
-    final scaledHeight = (source.height * scale).round();
-    final scaled = img.copyResize(
-      source,
-      width: scaledWidth,
-      height: scaledHeight,
-      interpolation: img.Interpolation.linear,
-    );
-    return img.copyCrop(
-      scaled,
-      x: (scaledWidth - width) ~/ 2,
-      y: (scaledHeight - height) ~/ 2,
-      width: width,
-      height: height,
-    );
   }
 }

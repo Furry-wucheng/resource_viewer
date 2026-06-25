@@ -31,16 +31,16 @@ void main() {
   });
 
   group('VideoThumbnailGenerator', () {
-    test('原生解码结果被裁剪为 180x270 JPEG', () async {
+    test('原生解码结果直接返回为 JPEG', () async {
       final video = File('${tempDir.path}${Platform.pathSeparator}clip.mp4');
       await video.writeAsBytes(const [0]);
       final thumbnailer = _MockVideoThumbnailer();
-      final frame = img.Image(width: 320, height: 180);
+      final frame = img.Image(width: 180, height: 270);
       img.fill(frame, color: img.ColorRgb8(20, 180, 80));
       when(
         () => thumbnailer.saveThumbnailToBytes(
           srcFile: video.path,
-          width: 270,
+          width: 180,
           height: 270,
           quality: 85,
         ),
@@ -59,7 +59,7 @@ void main() {
       verify(
         () => thumbnailer.saveThumbnailToBytes(
           srcFile: video.path,
-          width: 270,
+          width: 180,
           height: 270,
           quality: 85,
         ),
