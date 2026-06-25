@@ -329,20 +329,18 @@ class _ResourcePickerDialogState extends State<ResourcePickerDialog> {
               height: 40,
               child: Row(
                 children: [
-                  // 复选框（仅可作资源单元的节点显示）
-                  if (!node.isDirectory || node.isLeaf)
-                    GestureDetector(
-                      onTap: () => _toggleCheck(node),
-                      child: Icon(
-                        node.isChecked
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank,
-                        size: 20,
-                        color: node.isChecked
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
+                  GestureDetector(
+                    onTap: () => _toggleCheck(node),
+                    child: Icon(
+                      node.isChecked
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 20,
+                      color: node.isChecked
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
+                  ),
                   const SizedBox(width: 8),
                   // 展开/折叠箭头
                   if (node.isDirectory && !node.isLeaf)
