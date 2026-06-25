@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置：允许 SMB 明文连接
+  Android 9+ 默认禁止非 HTTPS 流量，SMB 使用裸 TCP（端口 445）需要显式放行。
+  此配置允许所有明文 TCP 连接，适用于局域网 SMB 服务器。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
