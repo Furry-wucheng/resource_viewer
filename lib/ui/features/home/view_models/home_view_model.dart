@@ -143,6 +143,7 @@ class HomeViewModel extends BaseViewModel {
   /// 开始监听数据库变化
   ///
   /// 当资源或源状态变化时重新加载第一页。
+  /// 使用 debounce 避免批量操作（如一次添加 200+ 资源）触发大量重复加载。
   /// TODO: 改为局部更新而非全量重置，避免丢弃用户已滚动加载的分页数据。
   void startWatching() {
     _dbSubscription?.cancel();
@@ -150,9 +151,16 @@ class HomeViewModel extends BaseViewModel {
       result,
     ) {
       if (result is Ok) {
-        _loadFirstPage();
+        _scheduleReload();
       }
     });
+  }
+
+  Timer? _reloadDebounce;
+
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 300), _loadFirstPage);
   }
 
   /// 手动加载首页
@@ -427,6 +435,7 @@ class HomeViewModel extends BaseViewModel {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _reloadDebounce?.cancel();
     _dbSubscription?.cancel();
     super.dispose();
   }
